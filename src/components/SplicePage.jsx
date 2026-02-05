@@ -122,9 +122,6 @@ export default function SplicePage(){
       const url = URL.createObjectURL(f);
       setSourceUrl(url);
       setFileBlob(f);
-      // Test whether the browser can play it by loading metadata asynchronously:
-      // If it fails to load playable metadata, attempt server remux automatically.
-      // We'll listen for loadedmetadata and error events briefly.
       const v = videoRef.current;
       let metadataLoaded = false;
       const onLoaded = ()=> { metadataLoaded = true; cleanup(); };

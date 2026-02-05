@@ -12,11 +12,20 @@ export default function CombinePage(){
 
   function onFiles(e){
     const list = Array.from(e.target.files || []);
-    setFiles(list);
-    setOrder(list.map((_,i)=>i));
+    if (list.length === 0) return;
+    const startIndex = files.length;
+    const newFiles = [...files, ...list];
+    setFiles(newFiles);
+    setOrder(prev => {
+      // if prev empty and there are existing files, ensure base order keeps existing indexes
+      const base = prev.length ? prev.slice() : files.map((_, i) => i);
+      const added = list.map((_, idx) => startIndex + idx);
+      return [...base, ...added];
+    });
     setPreviewURL(null);
     setProgress(0);
     setStatus('');
+    if (inputRef.current) inputRef.current.value = '';
   }
 
   function move(i, dir){
@@ -31,33 +40,88 @@ export default function CombinePage(){
 
   function remove(i){
     setOrder(prev=>{
-      const nxt = prev.filter((_,idx)=>idx!==i);
-      // if removing a file, also remove from files array to keep indexes consistent for display
-      const removedIdx = prev[i];
-      const newFiles = files.filter((_,idx)=>idx!==removedIdx);
-      // remap order to new file indexes
+      const removedFileIdx = prev[i];
+      const nxtOrder = prev.filter((_, idx) => idx !== i);
+      const newFiles = files.filter((_, idx) => idx !== removedFileIdx);
       const map = {};
       let ni = 0;
-      for (let k=0;k<files.length;k++){
-        if (k===removedIdx) continue;
+      for (let k = 0; k < files.length; k++){
+        if (k === removedFileIdx) continue;
         map[k] = ni++;
       }
+      const remapped = nxtOrder.map(old => map[old]);
       setFiles(newFiles);
-      return nxt.map(old => map[old]);
+      return remapped;
     });
+    setPreviewURL(null);
+    setProgress(0);
+    setStatus('');
+  }
+
+  async function uploadAndMaybeRemux(file){
+    try {
+      const form = new FormData();
+      form.append('file', file, file.name);
+      form.append('remuxOnly', '1');
+      const resp = await fetch('http://localhost:3001/splice?remuxOnly=1', {
+        method: 'POST',
+        body: form,
+      });
+      if (!resp.ok) {
+        return file;
+      }
+      const reader = resp.body.getReader();
+      const contentLength = resp.headers.get('Content-Length');
+      let received = 0;
+      const chunks = [];
+      while (true){
+        const { done, value } = await reader.read();
+        if (done) break;
+        chunks.push(value);
+        received += value.length;
+        if (contentLength) setProgress(0.02 + 0.6 * (received / contentLength));
+      }
+      const out = new Blob(chunks, { type: 'video/mp4' });
+      const newName = (file.name || 'video').replace(/\.[^/.]+$/,'') + '.mp4';
+      const newFile = new File([out], newName, { type: 'video/mp4' });
+      return newFile;
+    } catch (err) {
+      console.error('[combine remux] failed', err);
+      return file;
+    }
   }
 
   async function combine(){
     if (order.length < 2) return;
-    setStatus('Uploading videos...');
+    setStatus('Preparing files...');
     setProgress(0.02);
     try {
+      setStatus('Uploading videos (remuxing if needed)...');
+      setProgress(0.03);
       const form = new FormData();
-      order.forEach((idx, i)=> {
-        const f = files[idx];
-        form.append('files', f, `part${i}_${f.name}`);
-      });
-      form.append('order', JSON.stringify(order.map(idx=>files[idx].name)));
+
+      // For each ordered entry, remux in-place if needed and append to form.
+      for (let i = 0; i < order.length; i++){
+        const idx = order[i];
+        const originalFile = files[idx];
+        const maybeRemuxed = await uploadAndMaybeRemux(originalFile);
+
+        // If remux produced a new File, replace original in-state at its index so list shows single item.
+        if (maybeRemuxed !== originalFile){
+          setFiles(prev => {
+            const next = prev.slice();
+            next[idx] = maybeRemuxed;
+            return next;
+          });
+        }
+
+        const toSend = maybeRemuxed;
+        form.append('files', toSend, `part${i}_${toSend.name}`);
+        setProgress(0.03 + 0.02 * (i + 1));
+      }
+
+      form.append('order', JSON.stringify(order.map(idx => files[idx]?.name || `file${idx}`)));
+
       const resp = await fetch('http://localhost:3001/combine', { method:'POST', body: form });
       if (!resp.ok){
         const err = await resp.json().catch(()=>({error:'server'}));
@@ -131,7 +195,14 @@ export default function CombinePage(){
         <div className="combine-controls">
           <button onClick={combine} disabled={order.length<2}>Combine on server</button>
           <div className="right-actions">
-            <button onClick={()=>{ setFiles([]); setOrder([]); setPreviewURL(null); setProgress(0); setStatus(''); inputRef.current.value=''; }}>Clear</button>
+            <button onClick={()=>{
+              setFiles([]);
+              setOrder([]);
+              setPreviewURL(null);
+              setProgress(0);
+              setStatus('');
+              if (inputRef.current) inputRef.current.value='';
+            }}>Clear</button>
             <button onClick={downloadPreview} disabled={!previewURL}>Download</button>
           </div>
         </div>
