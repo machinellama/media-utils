@@ -9,6 +9,7 @@ export default function CombinePage(){
   const [previewURL, setPreviewURL] = useState(null);
   const [progress, setProgress] = useState(0);
   const [status, setStatus] = useState('');
+  const [outputName, setOutputName] = useState('combined.mp4');
 
   function onFiles(e){
     const list = Array.from(e.target.files || []);
@@ -92,7 +93,6 @@ export default function CombinePage(){
   }
 
   async function combine(){
-    if (order.length < 2) return;
     setStatus('Preparing files...');
     setProgress(0.02);
     try {
@@ -120,7 +120,10 @@ export default function CombinePage(){
         setProgress(0.03 + 0.02 * (i + 1));
       }
 
+      // Use the user-provided output name when telling server expected output filename
+      const safeName = (outputName && outputName.trim()) ? outputName.trim() : 'combined.mp4';
       form.append('order', JSON.stringify(order.map(idx => files[idx]?.name || `file${idx}`)));
+      form.append('outputName', safeName);
 
       const resp = await fetch('http://localhost:3001/combine', { method:'POST', body: form });
       if (!resp.ok){
@@ -158,7 +161,7 @@ export default function CombinePage(){
     if (!previewURL) return;
     const a = document.createElement('a');
     a.href = previewURL;
-    a.download = 'combined.mp4';
+    a.download = outputName && outputName.trim() ? outputName.trim() : 'combined.mp4';
     document.body.appendChild(a);
     a.click();
     a.remove();
@@ -193,7 +196,16 @@ export default function CombinePage(){
         </div>
 
         <div className="combine-controls">
-          <button onClick={combine} disabled={order.length<2}>Combine on server</button>
+          <div className="combine-row">
+            <input
+              type="text"
+              className="output-name"
+              value={outputName}
+              onChange={e=>setOutputName(e.target.value)}
+              placeholder="Combined file name (e.g. mymix.mp4)"
+            />
+            <button onClick={combine}>Combine on server</button>
+          </div>
           <div className="right-actions">
             <button onClick={()=>{
               setFiles([]);
@@ -201,6 +213,7 @@ export default function CombinePage(){
               setPreviewURL(null);
               setProgress(0);
               setStatus('');
+              setOutputName('combined.mp4');
               if (inputRef.current) inputRef.current.value='';
             }}>Clear</button>
             <button onClick={downloadPreview} disabled={!previewURL}>Download</button>

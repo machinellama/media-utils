@@ -23,6 +23,8 @@ module.exports = (upload) => {
 
   async function needsRemuxToMp4(inputPath) {
     try {
+      const ext = path.extname(inputPath || '').toLowerCase();
+      if (ext === '.wmv' || ext === '.ts' || ext === '.m2ts') return true;
       const out = await new Promise((resolve, reject) => {
         const p = spawn('ffprobe', [
           '-v', 'error',
@@ -63,7 +65,6 @@ module.exports = (upload) => {
   }
 
   router.post('/', upload.single('file'), async (req, res) => {
-    // Log what we received for easier debugging
     console.info('[splice] POST start', {
       file: req.file && req.file.originalname,
       hasRangesField: typeof req.body.ranges !== 'undefined',
@@ -104,22 +105,43 @@ module.exports = (upload) => {
       const doRemux = await needsRemuxToMp4(uploadedPath);
       if (doRemux) {
         remuxedPath = path.join(tmpDir, 'input_remuxed.mp4');
-        await runFFmpeg([
+        const ext = path.extname(uploadedPath).toLowerCase();
+        const args = [
           '-y',
           '-fflags', '+genpts',
-          '-i', uploadedPath,
-          '-c', 'copy',
-          '-bsf:a', 'aac_adtstoasc',
-          '-movflags', '+faststart',
-          remuxedPath
-        ]);
-        console.info('[splice] remuxed uploaded file to mp4:', remuxedPath);
+          '-i', uploadedPath
+        ];
+        if (ext === '.wmv') {
+          args.push(
+            '-c:v', 'libx264',
+            '-preset', 'veryfast',
+            '-crf', '23',
+            '-c:a', 'aac',
+            '-b:a', '128k',
+            '-movflags', '+faststart',
+            remuxedPath
+          );
+        } else if (ext === '.ts' || ext === '.m2ts') {
+          args.push(
+            '-c', 'copy',
+            '-bsf:a', 'aac_adtstoasc',
+            '-movflags', '+faststart',
+            remuxedPath
+          );
+        } else {
+          args.push(
+            '-c', 'copy',
+            '-movflags', '+faststart',
+            remuxedPath
+          );
+        }
+        await runFFmpeg(args);
+        console.info('[splice] remuxed/converted uploaded file to mp4:', remuxedPath);
         workInput = remuxedPath;
       } else {
         console.info('[splice] uploaded file is mp4-like, no remux needed');
       }
 
-      // If caller requested remuxOnly, stream back the remuxed (or original) MP4 and exit.
       if (isRemuxOnly) {
         const returnPath = workInput;
         if (!fs.existsSync(returnPath)) throw new Error('remux output missing');
@@ -137,7 +159,6 @@ module.exports = (upload) => {
         return;
       }
 
-      // Normal splice/cut flow
       const segNames = [];
       for (let i = 0; i < ranges.length; i++) {
         const r = ranges[i];
