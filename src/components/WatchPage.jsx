@@ -15,6 +15,7 @@ export default function WatchPage(){
   const [historyList, setHistoryList] = useState([]);
   const [playlist, setPlaylist] = useState([]);
   const [playingIndex, setPlayingIndex] = useState(-1);
+  const [expandedMap, setExpandedMap] = useState({}); // keys are folder paths; true = expanded
 
   useEffect(()=>{
     try {
@@ -35,6 +36,13 @@ export default function WatchPage(){
       body: JSON.stringify({ folder: rootPath })
     }).then(r=>r.json()).then(data=>{
       if (data.error){ setStatus(data.error); setTree([]); setFlatList([]); return; }
+      // initialize expandedMap to collapse subfolders: only root expanded (top level node)
+      const initMap = {};
+      if (Array.isArray(data.tree) && data.tree.length>0){
+        // root node key '' represents the tree root; expand root children but collapse deeper folders
+        initMap['/'] = true;
+      }
+      setExpandedMap(initMap);
       setTree(data.tree || []);
       setFlatList(data.flat || []);
       setStatus('');
@@ -80,6 +88,10 @@ export default function WatchPage(){
     setSelected(null);
     setPreviewURL(null);
     saveFolderToHistory(v);
+  }
+
+  function toggleFolder(key){
+    setExpandedMap(prev => ({ ...prev, [key]: !prev[key] }));
   }
 
   function pickRandom(){
@@ -135,25 +147,36 @@ export default function WatchPage(){
   }
 
   function renderTree(nodes, prefix=''){
-    return nodes.map(n=>(
-      <div className="folder" key={prefix + n.name}>
-        <div className="folder-name">{n.name}</div>
-        <div className="children">
-          {n.files && n.files.map(f=>(
-            <div
-              key={f.path}
-              className={'file-item'+(selected===f.path?' selected':'')}
-              title={f.name}
-              onClick={()=>openFile(f.path)}
-            >
-              <div className="file-name">{f.name}</div>
-              <div className="file-small">{Math.round(f.size/1024)} KB</div>
+    return nodes.map(n=>{
+      const key = prefix + n.name; // unique key representing this folder's path relative to root
+      const isExpanded = !!expandedMap[key];
+      return (
+        <div className="folder" key={key}>
+          <div className="folder-header">
+            <button className={'toggle-btn'+(isExpanded?' expanded':'')} onClick={()=>toggleFolder(key)}>
+              {isExpanded ? '▾' : '▸'}
+            </button>
+            <div className="folder-name">{n.name}</div>
+          </div>
+          {isExpanded && (
+            <div className="children">
+              {n.files && n.files.map(f=>(
+                <div
+                  key={f.path}
+                  className={'file-item'+(selected===f.path?' selected':'')}
+                  title={f.name}
+                  onClick={()=>openFile(f.path)}
+                >
+                  <div className="file-name">{f.name}</div>
+                  <div className="file-small">{Math.round(f.size/1024)} KB</div>
+                </div>
+              ))}
+              {n.folders && renderTree(n.folders, key + '/')}
             </div>
-          ))}
-          {n.folders && renderTree(n.folders, prefix + n.name + '/')}
+          )}
         </div>
-      </div>
-    ));
+      );
+    });
   }
 
   const buildPlaylistFromFlat = useCallback((list, shuffled=false) => {
@@ -199,7 +222,7 @@ export default function WatchPage(){
         <div className="controls-top">
           <input ref={folderRef} type="text" placeholder="Enter folder path (absolute)" onBlur={onPickFolder} />
           <button onClick={onOpenClick}>Open</button>
-          <select onChange={onHistorySelect} value="">
+          <select className="history-select" onChange={onHistorySelect} value="">
             <option value="">Recent folders</option>
             {historyList.map((h,i)=>(
               <option key={h} value={h}>{i+1}: {h}</option>
