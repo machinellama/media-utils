@@ -39,8 +39,13 @@ export default function WatchPage() {
       if (data.error) { setStatus(data.error); setTree([]); setFlatList([]); return; }
       const initMap = {};
       if (Array.isArray(data.tree) && data.tree.length > 0) {
-        initMap['/'] = true;
+        // expand the first-level nodes (one-level open); children remain collapsed
+        data.tree.forEach(n => {
+          const key = n.name; // matches renderTree prefix for top-level nodes
+          initMap[key] = true;
+        });
       }
+      setExpandedMap(initMap);
       setExpandedMap(initMap);
       setTree(data.tree || []);
       setFlatList(data.flat || []);
