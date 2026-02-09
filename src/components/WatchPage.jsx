@@ -15,8 +15,10 @@ export default function WatchPage() {
   const [historyList, setHistoryList] = useState([]);
   const [playlist, setPlaylist] = useState([]);
   const [playingIndex, setPlayingIndex] = useState(-1);
-  const [expandedMap, setExpandedMap] = useState({}); // keys are folder paths; true = expanded
-  const [mode, setMode] = useState('single'); // 'single' | 'all' | 'all-random' | 'random'
+  const [expandedMap, setExpandedMap] = useState({});
+  const [mode, setMode] = useState('single');
+  const [sortBy, setSortBy] = useState('updated');
+  const [sortOrder, setSortOrder] = useState('desc');
 
   useEffect(() => {
     try {
@@ -39,19 +41,58 @@ export default function WatchPage() {
       if (data.error) { setStatus(data.error); setTree([]); setFlatList([]); return; }
       const initMap = {};
       if (Array.isArray(data.tree) && data.tree.length > 0) {
-        // expand the first-level nodes (one-level open); children remain collapsed
         data.tree.forEach(n => {
-          const key = n.name; // matches renderTree prefix for top-level nodes
+          const key = n.name;
           initMap[key] = true;
         });
       }
       setExpandedMap(initMap);
-      setExpandedMap(initMap);
-      setTree(data.tree || []);
-      setFlatList(data.flat || []);
+      const sortedTree = sortTreeFiles(data.tree || [], sortBy, sortOrder);
+      setTree(sortedTree);
+      setFlatList(applySortToFlat(data.flat || [], sortBy, sortOrder));
       setStatus('');
     }).catch(e => { setStatus('Scan failed'); setTree([]); setFlatList([]); });
   }, [rootPath]);
+
+  useEffect(() => {
+    setFlatList(prev => applySortToFlat(prev, sortBy, sortOrder));
+    setTree(prev => sortTreeFiles(prev, sortBy, sortOrder));
+  }, [sortBy, sortOrder]);
+
+  function applySortToFlat(list, sortByParam = sortBy, sortOrderParam = sortOrder) {
+    const copy = Array.isArray(list) ? list.slice() : [];
+    const newArray = copy.sort((a, b) => {
+      const la = (a.name || '').toLowerCase();
+      const lb = (b.name || '').toLowerCase();
+
+      if (sortByParam === 'name') {
+        const cmp = la.localeCompare(lb);
+        return sortOrderParam === 'asc' ? cmp : -cmp;
+      } else {
+        const va = a.mtimeMs || a.mtime || 0;
+        const vb = b.mtimeMs || b.mtime || 0;
+        if (va < vb) return sortOrderParam === 'asc' ? -1 : 1;
+        if (va > vb) return sortOrderParam === 'asc' ? 1 : -1;
+        const cmp = la.localeCompare(lb);
+        return sortOrderParam === 'asc' ? cmp : -cmp;
+      }
+    });
+    return newArray;
+  }
+
+  function sortTreeFiles(nodes, sortByParam = sortBy, sortOrderParam = sortOrder) {
+    if (!Array.isArray(nodes)) return [];
+    return nodes.map(n => {
+      const nn = { ...n };
+      if (Array.isArray(nn.files)) {
+        nn.files = applySortToFlat(nn.files, sortByParam, sortOrderParam);
+      }
+      if (Array.isArray(nn.folders)) {
+        nn.folders = sortTreeFiles(nn.folders, sortByParam, sortOrderParam);
+      }
+      return nn;
+    });
+  }
 
   function persistHistory(list) {
     try { localStorage.setItem('watch_folder_history', JSON.stringify(list)); } catch (e) { }
@@ -160,6 +201,13 @@ export default function WatchPage() {
     }
   }
 
+  function formatSize(size) {
+    if (size >= 1024 * 1024 * 1024) {
+      return (size / (1024 * 1024 * 1024)).toFixed(1) + ' GB';
+    }
+    return (size / (1024 * 1024)).toFixed(1) + ' MB';
+  }
+
   function renderTree(nodes, prefix = '') {
     return nodes.map(n => {
       const key = prefix + n.name;
@@ -186,8 +234,8 @@ export default function WatchPage() {
                     openFile(f.path);
                   }}
                 >
-                  <div className="file-name">{f.name}</div>
-                  <div className="file-small">{Math.round(f.size / 1024)} KB</div>
+                  <div className="file-name" style={{ whiteSpace: 'normal', wordBreak: 'break-word' }}>{f.name}</div>
+                  <div className="file-small">{formatSize(f.size)}</div>
                 </div>
               ))}
               {n.folders && renderTree(n.folders, key + '/')}
@@ -318,7 +366,24 @@ export default function WatchPage() {
           <button onClick={() => { playAll(true); }}>Play all random</button>
         </div>
 
-        <div className="library">
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginTop: '8px' }}>
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+            <span>Sort:</span>
+            <select className="history-select" value={sortBy} onChange={e => setSortBy(e.target.value)}>
+              <option value="updated">Updated</option>
+              <option value="name">Name</option>
+            </select>
+          </div>
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+            <span>Order:</span>
+            <select className="history-select" value={sortOrder} onChange={e => setSortOrder(e.target.value)}>
+              <option value="asc">asc</option>
+              <option value="desc">desc</option>
+            </select>
+          </div>
+        </div>
+
+        <div className="library" style={{ marginTop: '8px' }}>
           {tree.length === 0 && <div className="empty">No videos. Enter folder path above and press Open.</div>}
           {renderTree(tree)}
         </div>

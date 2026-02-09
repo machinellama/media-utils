@@ -30,15 +30,15 @@ module.exports = () => {
             if (VIDEO_EXTS.includes(ext)){
               const rel = path.relative(abs, full);
               const stat = fs.statSync(full);
-              files.push({ name: it.name, path: rel.replace(/\\/g,'/'), size: stat.size });
-              all.push({ name: it.name, path: rel.replace(/\\/g,'/'), size: stat.size, full });
+              files.push({ name: it.name, path: rel.replace(/\\/g,'/'), size: stat.size, mtimeMs: stat.mtimeMs });
+              all.push({ name: it.name, path: rel.replace(/\\/g,'/'), size: stat.size, full, mtimeMs: stat.mtimeMs });
             }
           }
         }
         return { name: path.basename(dir), files, folders };
       }
       const tree = walk(abs);
-      const flat = all.map(a=>({ name:a.name, path:a.path, size:a.size }));
+      const flat = all.map(a=>({ name:a.name, path:a.path, size:a.size, mtimeMs:a.mtimeMs }));
       res.json({ tree: [tree], flat });
     } catch (e){
       res.status(500).json({ error: 'scan failed' });
