@@ -332,8 +332,8 @@ export default function WatchPage() {
         <div className="player-controls" style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '8px' }}>
           {mode !== 'single' && mode !== 'random' && (
             <>
-              <button onClick={playPrevious}>Previous</button>
-              <button onClick={playNext}>Next</button>
+              <button className="random" onClick={playPrevious}>Previous</button>
+              <button className="random" onClick={playNext}>Next</button>
             </>
           )}
 

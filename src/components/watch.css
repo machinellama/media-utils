@@ -37,7 +37,7 @@
   color:#02121a;
   font-weight:700;
 }
-.controls-top .random{background:transparent;color:var(--muted);border:1px solid rgba(255,255,255,0.04)}
+.random{background:transparent;color:var(--muted);border:1px solid rgba(255,255,255,0.04)}
 .controls-top select,
 .controls-top .history-select{
   background:rgba(0,0,0,0.6);
