@@ -1,0 +1,107 @@
+/* src/watch.css */
+.watch-container{
+  display:grid;
+  grid-template-columns:360px 1fr;
+  gap:16px;
+  height:100%;
+  padding:12px;
+}
+.watch-left{
+  background:rgba(255,255,255,0.02);
+  border-radius:10px;
+  padding:12px;
+  display:flex;
+  flex-direction:column;
+  gap:12px;
+  overflow:auto;
+}
+.controls-top{
+  display:flex;
+  gap:8px;
+  align-items:center;
+}
+.controls-top input{
+  flex:1;
+  background:rgba(0,0,0,0.6);
+  color:#fff;
+  border:0;
+  padding:8px;
+  border-radius:6px;
+}
+.controls-top button{
+  padding:8px 10px;
+  border-radius:6px;
+  border:0;
+  cursor:pointer;
+  background:linear-gradient(90deg,var(--primary),var(--accent));
+  color:#02121a;
+  font-weight:700;
+}
+.controls-top .random{background:transparent;color:var(--muted);border:1px solid rgba(255,255,255,0.04)}
+
+.library{
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+  font-size:13px;
+}
+.empty{color:var(--muted);padding:18px;text-align:center}
+
+.folder{padding:6px;border-radius:6px;background:rgba(0,0,0,0.02)}
+.folder-name{font-weight:800;margin-bottom:6px;font-size:13px}
+.children{display:flex;flex-direction:column;gap:6px;padding-left:8px}
+
+.file-item{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  padding:6px;
+  border-radius:6px;
+  cursor:pointer;
+  gap:8px;
+  white-space:nowrap;
+  overflow:hidden;
+}
+.file-item .file-name{
+  font-weight:700;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+.file-item .file-small{
+  font-size:11px;
+  color:var(--muted);
+  margin-left:8px;
+  flex:0 0 80px;
+  text-align:right;
+}
+.file-item:hover{background:rgba(255,255,255,0.01)}
+.file-item.selected{background:linear-gradient(90deg,var(--primary),var(--accent)); color:#02121a}
+
+.watch-main{
+  display:flex;
+  flex-direction:column;
+  gap:12px;
+}
+.player-top{display:flex;justify-content:space-between;align-items:center}
+.title{font-weight:800}
+.status{font-size:13px;color:var(--muted)}
+
+.player-box{
+  background:rgba(255,255,255,0.02);
+  border-radius:10px;
+  min-height:420px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  overflow:hidden;
+}
+.placeholder{color:var(--muted);padding:24px;text-align:center}
+
+.progress-row{margin-top:8px}
+progress{width:100%;height:12px;border-radius:8px;appearance:none}
+@media(max-width:880px){
+  .watch-container{grid-template-columns:1fr;gap:12px}
+  .watch-left{order:2}
+  .watch-main{order:1}
+  .player-box{min-height:240px}
+}
