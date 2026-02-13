@@ -61,23 +61,24 @@ export default function WatchPage() {
 
   function applySortToFlat(list, sortByParam = sortBy, sortOrderParam = sortOrder) {
     const copy = Array.isArray(list) ? list.slice() : [];
-    const newArray = copy.sort((a, b) => {
+    const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
+
+    return copy.sort((a, b) => {
       const la = (a.name || '').toLowerCase();
       const lb = (b.name || '').toLowerCase();
 
       if (sortByParam === 'name') {
-        const cmp = la.localeCompare(lb);
+        const cmp = collator.compare(la, lb);
         return sortOrderParam === 'asc' ? cmp : -cmp;
       } else {
-        const va = a.mtimeMs || a.mtime || 0;
-        const vb = b.mtimeMs || b.mtime || 0;
+        const va = a.mtimeMs ?? a.mtime ?? 0;
+        const vb = b.mtimeMs ?? b.mtime ?? 0;
         if (va < vb) return sortOrderParam === 'asc' ? -1 : 1;
         if (va > vb) return sortOrderParam === 'asc' ? 1 : -1;
-        const cmp = la.localeCompare(lb);
+        const cmp = collator.compare(la, lb);
         return sortOrderParam === 'asc' ? cmp : -cmp;
       }
     });
-    return newArray;
   }
 
   function sortTreeFiles(nodes, sortByParam = sortBy, sortOrderParam = sortOrder) {
