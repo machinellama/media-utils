@@ -139,14 +139,25 @@ export default function WatchPage(props) {
       if (sortByParam === 'name') {
         const cmp = collator.compare(la, lb);
         return sortOrderParam === 'asc' ? cmp : -cmp;
-      } else {
+      } else if (sortByParam === 'updated') {
         const va = a.mtimeMs ?? a.mtime ?? 0;
         const vb = b.mtimeMs ?? b.mtime ?? 0;
         if (va < vb) return sortOrderParam === 'asc' ? -1 : 1;
         if (va > vb) return sortOrderParam === 'asc' ? 1 : -1;
         const cmp = collator.compare(la, lb);
         return sortOrderParam === 'asc' ? cmp : -cmp;
+      } else if (sortByParam === 'size') {
+        const sa = typeof a.size === 'number' ? a.size : Number(a.size) || 0;
+        const sb = typeof b.size === 'number' ? b.size : Number(b.size) || 0;
+        if (sa < sb) return sortOrderParam === 'asc' ? -1 : 1;
+        if (sa > sb) return sortOrderParam === 'asc' ? 1 : -1;
+        const cmp = collator.compare(la, lb);
+        return sortOrderParam === 'asc' ? cmp : -cmp;
       }
+
+      // default fallback: sort by name
+      const cmp = collator.compare(la, lb);
+      return sortOrderParam === 'asc' ? cmp : -cmp;
     });
   }
 
@@ -273,9 +284,9 @@ export default function WatchPage(props) {
 
   function formatSize(size) {
     if (size >= 1024 * 1024 * 1024) {
-      return (size / (1024 * 1024 * 1024)).toFixed(1) + ' GB';
+      return (size / (1024 * 1024 * 1024)).toFixed(2) + ' GB';
     }
-    return (size / (1024 * 1024)).toFixed(1) + ' MB';
+    return (size / (1024 * 1024)).toFixed(2) + ' MB';
   }
 
   function renderTree(nodes, prefix = '') {
@@ -442,6 +453,7 @@ export default function WatchPage(props) {
             <select className="history-select" value={sortBy} onChange={e => setSortBy(e.target.value)}>
               <option value="updated">Updated</option>
               <option value="name">Name</option>
+              <option value="size">Size</option>
             </select>
           </div>
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
