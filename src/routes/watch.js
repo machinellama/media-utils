@@ -6,7 +6,7 @@ const os = require('os');
 const { spawn } = require('child_process');
 const { rm } = fs.promises;
 
-const VIDEO_EXTS = ['.mp4','.m4v','.mov','.mkv','.webm','.avi','.ts','.mts','.m2ts'];
+const VIDEO_EXTS = ['.mp4', '.m4v', '.mov', '.mkv', '.webm', '.avi', '.ts', '.mts', '.m2ts'];
 
 module.exports = () => {
   const router = express.Router();
@@ -17,30 +17,30 @@ module.exports = () => {
     try {
       const abs = path.resolve(folder);
       const all = [];
-      function walk(dir){
-        const items = fs.readdirSync(dir, { withFileTypes:true });
+      function walk(dir) {
+        const items = fs.readdirSync(dir, { withFileTypes: true });
         const files = [];
         const folders = [];
-        for (const it of items){
+        for (const it of items) {
           const full = path.join(dir, it.name);
-          if (it.isDirectory()){
+          if (it.isDirectory()) {
             folders.push(walk(full));
-          } else if (it.isFile()){
+          } else if (it.isFile()) {
             const ext = path.extname(it.name).toLowerCase();
-            if (VIDEO_EXTS.includes(ext)){
+            if (VIDEO_EXTS.includes(ext)) {
               const rel = path.relative(abs, full);
               const stat = fs.statSync(full);
-              files.push({ name: it.name, path: rel.replace(/\\/g,'/'), size: stat.size, mtimeMs: stat.mtimeMs });
-              all.push({ name: it.name, path: rel.replace(/\\/g,'/'), size: stat.size, full, mtimeMs: stat.mtimeMs });
+              files.push({ name: it.name, path: rel.replace(/\\/g, '/'), size: stat.size, mtimeMs: stat.mtimeMs });
+              all.push({ name: it.name, path: rel.replace(/\\/g, '/'), size: stat.size, full, mtimeMs: stat.mtimeMs });
             }
           }
         }
         return { name: path.basename(dir), files, folders };
       }
       const tree = walk(abs);
-      const flat = all.map(a=>({ name:a.name, path:a.path, size:a.size, mtimeMs:a.mtimeMs }));
+      const flat = all.map(a => ({ name: a.name, path: a.path, size: a.size, mtimeMs: a.mtimeMs }));
       res.json({ tree: [tree], flat });
-    } catch (e){
+    } catch (e) {
       res.status(500).json({ error: 'scan failed' });
     }
   });
@@ -56,22 +56,22 @@ module.exports = () => {
     const stat = fs.statSync(absPath);
     const range = req.headers.range;
     const contentType = mimeTypeFor(absPath);
-    if (!range){
-      res.setHeader('Accept-Ranges','bytes');
+    if (!range) {
+      res.setHeader('Accept-Ranges', 'bytes');
       res.setHeader('Content-Type', contentType);
       res.setHeader('Content-Length', stat.size);
       const stream = fs.createReadStream(absPath);
       stream.pipe(res);
       return;
     }
-    const parts = range.replace(/bytes=/,'').split('-');
-    const start = parseInt(parts[0],10);
-    const end = parts[1] ? parseInt(parts[1],10) : stat.size - 1;
+    const parts = range.replace(/bytes=/, '').split('-');
+    const start = parseInt(parts[0], 10);
+    const end = parts[1] ? parseInt(parts[1], 10) : stat.size - 1;
     if (isNaN(start) || isNaN(end) || start > end) return res.status(416).end();
     res.status(206);
     res.setHeader('Content-Range', `bytes ${start}-${end}/${stat.size}`);
-    res.setHeader('Accept-Ranges','bytes');
-    res.setHeader('Content-Length', (end-start)+1);
+    res.setHeader('Accept-Ranges', 'bytes');
+    res.setHeader('Content-Length', (end - start) + 1);
     res.setHeader('Content-Type', contentType);
     const stream = fs.createReadStream(absPath, { start, end });
     stream.pipe(res);
@@ -101,27 +101,84 @@ module.exports = () => {
     const outPath = path.join(tmpDir, 'remuxed.mp4');
 
     try {
-      await runFFmpeg(['-y','-i',absPath,'-c','copy','-movflags','+faststart',outPath]);
-      res.setHeader('Content-Type','video/mp4');
+      await runFFmpeg(['-y', '-i', absPath, '-c', 'copy', '-movflags', '+faststart', outPath]);
+      res.setHeader('Content-Type', 'video/mp4');
       const stream = fs.createReadStream(outPath);
       stream.pipe(res);
-      stream.on('close', async ()=>{ try{ await rm(tmpDir, { recursive:true, force:true }); }catch(e){} });
-      stream.on('error', async ()=>{ try{ await rm(tmpDir, { recursive:true, force:true }); }catch(e){} });
-    } catch (e){
-      try{ await rm(tmpDir, { recursive:true, force:true }); }catch(err){}
+      stream.on('close', async () => { try { await rm(tmpDir, { recursive: true, force: true }); } catch (e) { } });
+      stream.on('error', async () => { try { await rm(tmpDir, { recursive: true, force: true }); } catch (e) { } });
+    } catch (e) {
+      try { await rm(tmpDir, { recursive: true, force: true }); } catch (err) { }
       res.status(500).json({ error: 'remux failed' });
     }
   });
 
+  // move file to Trash (safe delete)
+  router.post('/delete', express.json(), async (req, res) => {
+    const { folder, path: rel } = req.body || {};
+    if (!folder || !rel) return res.status(400).json({ error: 'missing' });
+
+    const absRoot = path.resolve(folder);
+    const absPath = path.resolve(absRoot, rel);
+    if (!absPath.startsWith(absRoot)) return res.status(403).json({ error: 'forbidden' });
+    if (!fs.existsSync(absPath)) return res.status(404).json({ error: 'not found' });
+
+    // prefer gio, then gvfs-trash, then trash-put (from trash-cli)
+    const trashCommands = [
+      { cmd: 'gio', args: ['trash', absPath] },
+      { cmd: 'gvfs-trash', args: [absPath] },
+      { cmd: 'trash-put', args: [absPath] }
+    ];
+
+    // try commands in order until one succeeds
+    async function tryTrash() {
+      for (const t of trashCommands) {
+        try {
+          await runProcess(t.cmd, t.args);
+          return;
+        } catch (e) {
+          // continue to next command
+        }
+      }
+      throw new Error('no-trash-command');
+    }
+
+    try {
+      await tryTrash();
+      res.json({ ok: true });
+    } catch (e) {
+      if (e.message === 'no-trash-command') {
+        res.status(500).json({ error: 'no available trash command (install gio/gvfs-trash or trash-cli)' });
+      } else {
+        res.status(500).json({ error: 'trash failed' });
+      }
+    }
+  });
+
+  // helper to spawn a command and await completion (reused from runFFmpeg pattern)
+  function runProcess(cmd, args) {
+    return new Promise((resolve, reject) => {
+      const p = spawn(cmd, args);
+      let stderr = '';
+      p.stderr.on('data', d => stderr += d.toString());
+      p.on('close', code => {
+        if (code === 0) resolve();
+        else reject(new Error(`${cmd} failed: ${code}\n${stderr}`));
+      });
+      p.on('error', err => reject(err));
+    });
+  }
+
+
   return router;
 };
 
-function playableInBrowser(ext){
-  const play = ['.mp4','.m4v','.webm','.ogg'];
+function playableInBrowser(ext) {
+  const play = ['.mp4', '.m4v', '.webm', '.ogg'];
   return play.includes(ext);
 }
 
-function mimeTypeFor(p){
+function mimeTypeFor(p) {
   const ext = path.extname(p).toLowerCase();
   if (ext === '.mp4' || ext === '.m4v') return 'video/mp4';
   if (ext === '.webm') return 'video/webm';
@@ -129,11 +186,11 @@ function mimeTypeFor(p){
   return 'application/octet-stream';
 }
 
-function runFFmpeg(args){
-  return new Promise((resolve,reject)=>{
+function runFFmpeg(args) {
+  return new Promise((resolve, reject) => {
     const ff = spawn('ffmpeg', args);
     let stderr = '';
     ff.stderr.on('data', d => stderr += d.toString());
-    ff.on('close', code => { if (code===0) resolve(); else reject(new Error('ffmpeg failed: '+code+'\n'+stderr)); });
+    ff.on('close', code => { if (code === 0) resolve(); else reject(new Error('ffmpeg failed: ' + code + '\n' + stderr)); });
   });
 }

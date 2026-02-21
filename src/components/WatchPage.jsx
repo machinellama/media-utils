@@ -2,6 +2,8 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import './watch.css';
 
+const RECENT_HISTORY_LIMIT = 10;
+
 export default function WatchPage() {
   const folderRef = useRef(null);
   const videoRef = useRef(null);
@@ -19,15 +21,82 @@ export default function WatchPage() {
   const [mode, setMode] = useState('single');
   const [sortBy, setSortBy] = useState('updated');
   const [sortOrder, setSortOrder] = useState('desc');
+  const [deleting, setDeleting] = useState(false);
+
+  async function deleteFile(relPath) {
+    if (!rootPath || !relPath) return;
+    setDeleting(true);
+    setStatus('Deleting...');
+    try {
+      const resp = await fetch('http://localhost:3001/watch/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ folder: rootPath, path: relPath })
+      });
+      const j = await resp.json().catch(() => ({}));
+      if (!resp.ok || j.error) {
+        setStatus(j.error || 'Delete failed');
+        setDeleting(false);
+        return;
+      }
+      // reset player and selection
+      setPreviewURL(null);
+      setSelected(null);
+      setPlaylist([]);
+      setPlayingIndex(-1);
+      setMode('single');
+      setStatus('Deleted');
+
+      // remove deleted file from flatList and tree in-memory
+      setFlatList(prevFlat => {
+        const next = (prevFlat || []).filter(f => f.path !== relPath);
+        return next;
+      });
+
+      setTree(prevTree => {
+        // recursively remove file from tree structure
+        function removeFromNodes(nodes) {
+          if (!Array.isArray(nodes)) return nodes;
+          return nodes.map(n => {
+            const nn = { ...n };
+            if (Array.isArray(nn.files)) {
+              nn.files = nn.files.filter(f => f.path !== relPath);
+            }
+            if (Array.isArray(nn.folders)) {
+              nn.folders = removeFromNodes(nn.folders);
+            }
+            return nn;
+          });
+        }
+        return removeFromNodes(prevTree);
+      });
+
+      setDeleting(false);
+    } catch (e) {
+      setStatus('Delete failed');
+      setDeleting(false);
+    }
+  }
+
 
   useEffect(() => {
     try {
       const raw = localStorage.getItem('watch_folder_history');
       if (raw) {
         const h = JSON.parse(raw);
-        setHistoryList(Array.isArray(h) ? h : []);
+        const hList = Array.isArray(h) ? h : [];
+        const firstHistory = hList?.[0] || null;
+
+        setHistoryList(hList);
+
+        if (firstHistory) {
+          setRootPath(firstHistory);
+          if (folderRef.current) folderRef.current.value = firstHistory;
+        }
       }
-    } catch (e) { }
+    } catch (e) {
+      console.log('watch folder useEffect', { e });
+    }
   }, []);
 
   useEffect(() => {
@@ -102,7 +171,7 @@ export default function WatchPage() {
   function saveFolderToHistory(folder) {
     if (!folder) return;
     const normalized = folder.trim();
-    const updated = [normalized, ...historyList.filter(h => h !== normalized)].slice(0, 5);
+    const updated = [normalized, ...historyList.filter(h => h !== normalized)].slice(0, RECENT_HISTORY_LIMIT);
     setHistoryList(updated);
     persistHistory(updated);
   }
@@ -416,6 +485,23 @@ export default function WatchPage() {
             <div className="placeholder">Select a file to play</div>
           )}
         </div>
+        <div className="player-actions" style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
+          <button
+            onClick={() => { if (selected) deleteFile(selected); }}
+            disabled={!selected || deleting}
+            className="output-name"
+          >
+            {deleting ? 'Deleting...' : 'Delete'}
+          </button>
+          <button
+            onClick={() => { if (selected) spliceFile(selected); }}
+            disabled={!selected}
+            className="output-name"
+          >
+            Splice
+          </button>
+        </div>
+
         <div className="progress-row">
           <progress value={progress} max="1"></progress>
         </div>

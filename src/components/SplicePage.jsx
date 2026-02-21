@@ -2,16 +2,16 @@
 import React, { useRef, useState, useEffect } from 'react';
 import './splice.css';
 
-function fmt(t){
+function fmt(t) {
   if (!isFinite(t)) return '—';
-  const h = Math.floor(t/3600);
-  const m = Math.floor((t%3600)/60);
-  const s = Math.floor(t%60);
-  const ms = Math.floor((t % 1)*1000);
-  return `${h}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}.${String(ms).padStart(3,'0')}`;
+  const h = Math.floor(t / 3600);
+  const m = Math.floor((t % 3600) / 60);
+  const s = Math.floor(t % 60);
+  const ms = Math.floor((t % 1) * 1000);
+  return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}.${String(ms).padStart(3, '0')}`;
 }
 
-export default function SplicePage(){
+export default function SplicePage() {
   const videoRef = useRef(null);
   const fileRef = useRef(null);
   const [fileBlob, setFileBlob] = useState(null);
@@ -25,12 +25,16 @@ export default function SplicePage(){
   const [sourceUrl, setSourceUrl] = useState(null);
   const [remuxing, setRemuxing] = useState(false);
 
-  useEffect(()=> {
+  // New state for rotate and filename
+  const [rotateDeg, setRotateDeg] = useState(0);
+  const [outputFilename, setOutputFilename] = useState('');
+
+  useEffect(() => {
     const v = videoRef.current;
     if (!v) return;
-    const onTime = ()=> setCurrentTime(v.currentTime);
-    const onLoaded = ()=> setDuration(v.duration || NaN);
-    const onError = ()=> {
+    const onTime = () => setCurrentTime(v.currentTime);
+    const onLoaded = () => setDuration(v.duration || NaN);
+    const onError = () => {
       const err = v.error;
       if (err) {
         console.error('[video] media error:', { code: err.code, message: err.message || null, mediaErrorObj: err });
@@ -41,14 +45,14 @@ export default function SplicePage(){
     v.addEventListener('timeupdate', onTime);
     v.addEventListener('loadedmetadata', onLoaded);
     v.addEventListener('error', onError);
-    return ()=> {
+    return () => {
       v.removeEventListener('timeupdate', onTime);
       v.removeEventListener('loadedmetadata', onLoaded);
       v.removeEventListener('error', onError);
     };
   }, []);
 
-  function resetStateOnNewFile(){
+  function resetStateOnNewFile() {
     setRanges([]);
     setCurrentStart(null);
     setCurrentEnd(null);
@@ -56,9 +60,11 @@ export default function SplicePage(){
     setStatus('');
     setDuration(NaN);
     setCurrentTime(0);
+    setRotateDeg(0);
+    setOutputFilename('');
   }
 
-  async function remuxFileToMp4(file){
+  async function remuxFileToMp4(file) {
     setRemuxing(true);
     setStatus('Remuxing for playback...');
     setProgress(0.02);
@@ -71,7 +77,7 @@ export default function SplicePage(){
         body: form,
       });
       if (!resp.ok) {
-        const err = await resp.json().catch(()=>({ error: 'server error' }));
+        const err = await resp.json().catch(() => ({ error: 'server error' }));
         setStatus('Remux failed: ' + (err.error || resp.statusText));
         setProgress(0);
         setRemuxing(false);
@@ -93,7 +99,7 @@ export default function SplicePage(){
       const out = new Blob(chunks, { type: 'video/mp4' });
       setProgress(1);
       setStatus('Remux complete');
-      setTimeout(()=>setProgress(0),600);
+      setTimeout(() => setProgress(0), 600);
       setRemuxing(false);
       return out;
     } catch (err) {
@@ -105,7 +111,7 @@ export default function SplicePage(){
     }
   }
 
-  async function onFile(e){
+  async function onFile(e) {
     const f = e.target.files && e.target.files[0];
     console.debug('[file] input change', { fileProvided: !!f });
     if (!f) {
@@ -124,14 +130,14 @@ export default function SplicePage(){
       setFileBlob(f);
       const v = videoRef.current;
       let metadataLoaded = false;
-      const onLoaded = ()=> { metadataLoaded = true; cleanup(); };
-      const onErr = ()=> { cleanup(); attemptRemux(); };
-      const cleanup = ()=> {
+      const onLoaded = () => { metadataLoaded = true; cleanup(); };
+      const onErr = () => { cleanup(); attemptRemux(); };
+      const cleanup = () => {
         if (!v) return;
         v.removeEventListener('loadedmetadata', onLoaded);
         v.removeEventListener('error', onErr);
       };
-      const attemptRemux = async ()=> {
+      const attemptRemux = async () => {
         // If browser couldn't load playable source, call server remux.
         console.info('[file] attempting remux because browser cannot play file locally');
         const remuxedBlob = await remuxFileToMp4(f);
@@ -139,7 +145,7 @@ export default function SplicePage(){
           const remuxUrl = URL.createObjectURL(remuxedBlob);
           // replace source and fileBlob with remuxed MP4 so UI works naturally
           setSourceUrl(remuxUrl);
-          const newName = (f.name || 'video').replace(/\.[^/.]+$/,'') + '.mp4';
+          const newName = (f.name || 'video').replace(/\.[^/.]+$/, '') + '.mp4';
           const newFile = new File([remuxedBlob], newName, { type: 'video/mp4' });
           setFileBlob(newFile);
         } else {
@@ -156,7 +162,7 @@ export default function SplicePage(){
         v.addEventListener('loadedmetadata', onLoaded, { once: true });
         v.addEventListener('error', onErr, { once: true });
         // If neither event fires within 1s, assume loadedmetadata succeeded or browser accepted it.
-        setTimeout(()=> {
+        setTimeout(() => {
           if (!metadataLoaded) cleanup();
         }, 1000);
       }
@@ -168,39 +174,58 @@ export default function SplicePage(){
     }
   }
 
-  function setStart(){ 
+  function setStart() {
     const t = videoRef.current && videoRef.current.currentTime;
-    setCurrentStart(t); 
+    setCurrentStart(t);
   }
-  function setEnd(){ 
+  function setEnd() {
     const t = videoRef.current && videoRef.current.currentTime;
-    setCurrentEnd(t); 
+    setCurrentEnd(t);
   }
-  function addRange(){
+  function addRange() {
     const s = Math.min(currentStart ?? 0, currentEnd ?? 0);
     const e = Math.max(currentStart ?? 0, currentEnd ?? 0);
     if (!isFinite(s) || !isFinite(e) || e - s < 0.01) return;
-    setRanges(prev => [...prev, {start:s, end:e}]);
+    setRanges(prev => [...prev, { start: s, end: e }]);
     setCurrentStart(null);
     setCurrentEnd(null);
   }
-  function removeRange(i){ setRanges(prev => prev.filter((_,idx)=>idx!==i)); }
+  function removeRange(i) { setRanges(prev => prev.filter((_, idx) => idx !== i)); }
 
-  async function exportRanges(){
-    if (!fileBlob || ranges.length===0) return;
+  async function exportRanges() {
+    if (!fileBlob || ranges.length === 0) return;
     setProgress(0.02);
     setStatus('Uploading file...');
     try {
       const form = new FormData();
       form.append('file', fileBlob, fileBlob.name);
       form.append('ranges', JSON.stringify(ranges));
-      // send to server splice endpoint which will remux if needed and perform cut/concat
+      // append new params: rotate (degrees) and output filename if provided
+      const rot = Number(rotateDeg) || 0;
+      form.append('rotate', String(rot));
+      if (outputFilename && outputFilename.trim() !== '') {
+        // Ensure filename ends with .mp4
+        let name = outputFilename.trim();
+        if (!/\.[^/.]+$/.test(name)) name = name + '.mp4';
+        form.append('outputFilename', name);
+      }
+
+      // debug: print form contents
+      for (const [key, value] of form.entries()) {
+        if (value instanceof File) {
+          console.log(key, 'File:', value.name, value.type, value.size);
+        } else {
+          console.log(key, 'Value:', value);
+        }
+      }
+
+      // send to server splice endpoint which will remux if needed and perform cut/concat/rotate
       const resp = await fetch('http://localhost:3001/splice', {
         method: 'POST',
         body: form,
       });
       if (!resp.ok) {
-        const err = await resp.json().catch(()=>({ error: 'server error' }));
+        const err = await resp.json().catch(() => ({ error: 'server error' }));
         setStatus('Server error: ' + (err.error || resp.statusText));
         setProgress(0);
         return;
@@ -218,10 +243,12 @@ export default function SplicePage(){
         if (contentLength) setProgress(0.1 + 0.8 * (received / contentLength));
       }
       const out = new Blob(chunks, { type: 'video/mp4' });
-      downloadBlob(out, (fileBlob.name || 'video').replace(/\.[^/.]+$/,'') + '_spliced.mp4');
+      const defaultName = (fileBlob.name || 'video').replace(/\.[^/.]+$/, '') + '_spliced.mp4';
+      const downloadName = (outputFilename && outputFilename.trim() !== '') ? (/\.[^/.]+$/.test(outputFilename.trim()) ? outputFilename.trim() : outputFilename.trim() + '.mp4') : defaultName;
+      downloadBlob(out, downloadName);
       setProgress(1);
       setStatus('Done');
-      setTimeout(()=>setProgress(0),600);
+      setTimeout(() => setProgress(0), 600);
     } catch (err) {
       console.error(err);
       setStatus('Upload or processing failed');
@@ -229,7 +256,7 @@ export default function SplicePage(){
     }
   }
 
-  function downloadBlob(blob, name){
+  function downloadBlob(blob, name) {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -237,18 +264,18 @@ export default function SplicePage(){
     document.body.appendChild(a);
     a.click();
     a.remove();
-    setTimeout(()=>URL.revokeObjectURL(url),60000);
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
   }
 
   return (
     <div className="container">
       <div className="left-col">
         <label className="filelabel">
-          <input ref={fileRef} type="file" accept="video/*" onChange={onFile}/>
+          <input ref={fileRef} type="file" accept="video/*" onChange={onFile} />
           <span>{fileBlob ? fileBlob.name : 'Select video to splice'}</span>
         </label>
         <div className="player-wrap">
-          <video ref={videoRef} controls crossOrigin="anonymous" src={sourceUrl} style={{ maxWidth:'100%' }}></video>
+          <video ref={videoRef} controls crossOrigin="anonymous" src={sourceUrl} style={{ maxWidth: '100%' }}></video>
         </div>
         <div className="times">
           <div className="time-item">
@@ -257,31 +284,67 @@ export default function SplicePage(){
           </div>
           <div className="time-item">
             <label>Start</label>
-            <div>{currentStart==null? '—' : fmt(currentStart)}</div>
+            <div>{currentStart == null ? '—' : fmt(currentStart)}</div>
           </div>
           <div className="time-item">
             <label>End</label>
-            <div>{currentEnd==null? '—' : fmt(currentEnd)}</div>
+            <div>{currentEnd == null ? '—' : fmt(currentEnd)}</div>
           </div>
         </div>
         <div className="btns">
           <button onClick={setStart} disabled={!fileBlob}>Set Start</button>
           <button onClick={setEnd} disabled={!fileBlob}>Set End</button>
-          <button onClick={addRange} disabled={!fileBlob || currentStart==null || currentEnd==null}>Add Range</button>
-          <button onClick={()=>{setRanges([]);}}>Clear</button>
-          <button onClick={exportRanges} disabled={!fileBlob || ranges.length===0 || remuxing}>Export Selected (server)</button>
+          <button onClick={addRange} disabled={!fileBlob || currentStart == null || currentEnd == null}>Add Range</button>
+          <button onClick={() => { setRanges([]); }}>Clear</button>
+
+          {/* New inputs for rotate and filename */}
+          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', marginLeft: '8px' }}>
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }} className="output-name">
+              <span style={{ fontSize: '12px' }}>Rotate°</span>
+              <input
+                type="number"
+                min="0"
+                max="360"
+                value={rotateDeg}
+                className="output-name"
+                onChange={(e) => {
+                  let v = Number(e.target.value);
+                  if (!isFinite(v)) v = 0;
+                  // normalize to 0-360
+                  v = ((v % 360) + 360) % 360;
+                  setRotateDeg(v);
+                }}
+                style={{ width: '70px' }}
+                disabled={!fileBlob}
+              />
+            </div>
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }} className="output-name">
+              <span style={{ fontSize: '12px' }}>Filename</span>
+              <input
+                type="text"
+                placeholder="optional output name"
+                value={outputFilename}
+                onChange={(e) => setOutputFilename(e.target.value)}
+                style={{ width: '160px' }}
+                className="output-name"
+                disabled={!fileBlob}
+              />
+            </div>
+          </div>
+
+          <button onClick={exportRanges} disabled={!fileBlob || ranges.length === 0 || remuxing}>Export Selected (server)</button>
         </div>
       </div>
       <aside className="right-col">
         <div className="ranges">
           <h2>Ranges</h2>
           <ul id="rangesList">
-            {ranges.map((r,i)=>(
+            {ranges.map((r, i) => (
               <li key={i}>
                 <div className="range-time">{fmt(r.start)} → {fmt(r.end)}</div>
                 <div className="range-actions">
-                  <button onClick={()=>{ videoRef.current.currentTime = r.start; videoRef.current.play(); }}>▶</button>
-                  <button onClick={()=>removeRange(i)}>✖</button>
+                  <button onClick={() => { videoRef.current.currentTime = r.start; videoRef.current.play(); }}>▶</button>
+                  <button onClick={() => removeRange(i)}>✖</button>
                 </div>
               </li>
             ))}
