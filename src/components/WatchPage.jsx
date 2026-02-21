@@ -95,7 +95,7 @@ export default function WatchPage(props) {
         }
       }
     } catch (e) {
-      console.log('watch folder useEffect', { e });
+      console.error('watch folder useEffect', { e });
     }
   }, []);
 

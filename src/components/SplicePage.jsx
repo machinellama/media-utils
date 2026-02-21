@@ -36,7 +36,6 @@ export default function SplicePage(props) {
 
       if (!f) {
         const resp = await fetch(url);
-        console.log({ resp });
         const blob = await resp.blob();
         const file = new File([blob], props.selectedVideoName || 'name.mp4', { type: blob.type });
         f = file;
@@ -94,7 +93,6 @@ export default function SplicePage(props) {
     const v = videoRef.current;
     if (!v) return;
 
-    console.log({ props });
     if (props.selectedVideoURL) {
       processFileURL(props.selectedVideoURL);
     }
@@ -234,15 +232,6 @@ export default function SplicePage(props) {
 
       if (saveFolder && saveFolder.trim() !== '') {
         form.append('saveFolder', saveFolder.trim());
-      }
-
-      // debug: print form contents
-      for (const [key, value] of form.entries()) {
-        if (value instanceof File) {
-          console.log(key, 'File:', value.name, value.type, value.size);
-        } else {
-          console.log(key, 'Value:', value);
-        }
       }
 
       // send to server splice endpoint which will remux if needed and perform cut/concat/rotate
