@@ -4,7 +4,7 @@ import './watch.css';
 
 const RECENT_HISTORY_LIMIT = 10;
 
-export default function WatchPage() {
+export default function WatchPage(props) {
   const folderRef = useRef(null);
   const videoRef = useRef(null);
   const [rootPath, setRootPath] = useState('');
@@ -494,7 +494,9 @@ export default function WatchPage() {
             {deleting ? 'Deleting...' : 'Delete'}
           </button>
           <button
-            onClick={() => { if (selected) spliceFile(selected); }}
+            onClick={() => {
+              props.setSelectedVideoURL?.(previewURL, selected);
+            }}
             disabled={!selected}
             className="output-name"
           >

@@ -11,7 +11,7 @@ function fmt(t) {
   return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}.${String(ms).padStart(3, '0')}`;
 }
 
-export default function SplicePage() {
+export default function SplicePage(props) {
   const videoRef = useRef(null);
   const fileRef = useRef(null);
   const [fileBlob, setFileBlob] = useState(null);
@@ -30,9 +30,75 @@ export default function SplicePage() {
   const [outputFilename, setOutputFilename] = useState('');
   const [saveFolder, setSaveFolder] = useState(''); // server-side path to save result (optional)
 
+  async function processFileURL(url, f) {
+    try {
+      setSourceUrl(url);
+
+      if (!f) {
+        const resp = await fetch(url);
+        console.log({ resp });
+        const blob = await resp.blob();
+        const file = new File([blob], props.selectedVideoName || 'name.mp4', { type: blob.type });
+        f = file;
+      }
+
+      f && setFileBlob(f);
+      const v = videoRef.current;
+      let metadataLoaded = false;
+      const onLoaded = () => { metadataLoaded = true; cleanup(); };
+      const onErr = () => { cleanup(); attemptRemux(); };
+      const cleanup = () => {
+        if (!v) return;
+        v.removeEventListener('loadedmetadata', onLoaded);
+        v.removeEventListener('error', onErr);
+      };
+      const attemptRemux = async () => {
+        if (!f) return;
+        // If browser couldn't load playable source, call server remux.
+        console.info('[file] attempting remux because browser cannot play file locally');
+        const remuxedBlob = await remuxFileToMp4(f);
+        if (remuxedBlob) {
+          const remuxUrl = URL.createObjectURL(remuxedBlob);
+          // replace source and fileBlob with remuxed MP4 so UI works naturally
+          setSourceUrl(remuxUrl);
+          const newName = (f.name || 'video').replace(/\.[^/.]+$/, '') + '.mp4';
+          const newFile = new File([remuxedBlob], newName, { type: 'video/mp4' });
+          setFileBlob(newFile);
+        } else {
+          // keep original and disable export until user manually remuxes
+          setFileBlob(f);
+        }
+      };
+
+      // Give the video a moment to try loading metadata:
+      if (v) {
+        v.pause();
+        v.src = url;
+        v.load();
+        v.addEventListener('loadedmetadata', onLoaded, { once: true });
+        v.addEventListener('error', onErr, { once: true });
+        // If neither event fires within 1s, assume loadedmetadata succeeded or browser accepted it.
+        setTimeout(() => {
+          if (!metadataLoaded) cleanup();
+        }, 1000);
+      }
+    } catch (err) {
+      console.error('[file] createObjectURL failed', err);
+      setStatus('Failed to load file locally');
+      setSourceUrl(null);
+      setFileBlob(null);
+    }
+  }
+
   useEffect(() => {
     const v = videoRef.current;
     if (!v) return;
+
+    console.log({ props });
+    if (props.selectedVideoURL) {
+      processFileURL(props.selectedVideoURL);
+    }
+
     const onTime = () => setCurrentTime(v.currentTime);
     const onLoaded = () => setDuration(v.duration || NaN);
     const onError = () => {
@@ -43,9 +109,11 @@ export default function SplicePage() {
         console.error('[video] video element reported error event with no MediaError');
       }
     };
+
     v.addEventListener('timeupdate', onTime);
     v.addEventListener('loadedmetadata', onLoaded);
     v.addEventListener('error', onError);
+
     return () => {
       v.removeEventListener('timeupdate', onTime);
       v.removeEventListener('loadedmetadata', onLoaded);
@@ -125,55 +193,8 @@ export default function SplicePage() {
     console.info('[file] selected', { name: f.name, size: f.size, type: f.type });
     resetStateOnNewFile();
 
-    // Try to create object URL for direct playback first.
-    try {
-      const url = URL.createObjectURL(f);
-      setSourceUrl(url);
-      setFileBlob(f);
-      const v = videoRef.current;
-      let metadataLoaded = false;
-      const onLoaded = () => { metadataLoaded = true; cleanup(); };
-      const onErr = () => { cleanup(); attemptRemux(); };
-      const cleanup = () => {
-        if (!v) return;
-        v.removeEventListener('loadedmetadata', onLoaded);
-        v.removeEventListener('error', onErr);
-      };
-      const attemptRemux = async () => {
-        // If browser couldn't load playable source, call server remux.
-        console.info('[file] attempting remux because browser cannot play file locally');
-        const remuxedBlob = await remuxFileToMp4(f);
-        if (remuxedBlob) {
-          const remuxUrl = URL.createObjectURL(remuxedBlob);
-          // replace source and fileBlob with remuxed MP4 so UI works naturally
-          setSourceUrl(remuxUrl);
-          const newName = (f.name || 'video').replace(/\.[^/.]+$/, '') + '.mp4';
-          const newFile = new File([remuxedBlob], newName, { type: 'video/mp4' });
-          setFileBlob(newFile);
-        } else {
-          // keep original and disable export until user manually remuxes
-          setFileBlob(f);
-        }
-      };
-
-      // Give the video a moment to try loading metadata:
-      if (v) {
-        v.pause();
-        v.src = url;
-        v.load();
-        v.addEventListener('loadedmetadata', onLoaded, { once: true });
-        v.addEventListener('error', onErr, { once: true });
-        // If neither event fires within 1s, assume loadedmetadata succeeded or browser accepted it.
-        setTimeout(() => {
-          if (!metadataLoaded) cleanup();
-        }, 1000);
-      }
-    } catch (err) {
-      console.error('[file] createObjectURL failed', err);
-      setStatus('Failed to load file locally');
-      setSourceUrl(null);
-      setFileBlob(null);
-    }
+    const url = URL.createObjectURL(f);
+    processFileURL(url, f);
   }
 
   function setStart() {
