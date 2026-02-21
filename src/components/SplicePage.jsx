@@ -25,9 +25,10 @@ export default function SplicePage() {
   const [sourceUrl, setSourceUrl] = useState(null);
   const [remuxing, setRemuxing] = useState(false);
 
-  // New state for rotate and filename
+  // New state for rotate, filename, save folder
   const [rotateDeg, setRotateDeg] = useState(0);
   const [outputFilename, setOutputFilename] = useState('');
+  const [saveFolder, setSaveFolder] = useState(''); // server-side path to save result (optional)
 
   useEffect(() => {
     const v = videoRef.current;
@@ -62,6 +63,7 @@ export default function SplicePage() {
     setCurrentTime(0);
     setRotateDeg(0);
     setOutputFilename('');
+    setSaveFolder('');
   }
 
   async function remuxFileToMp4(file) {
@@ -204,10 +206,13 @@ export default function SplicePage() {
       const rot = Number(rotateDeg) || 0;
       form.append('rotate', String(rot));
       if (outputFilename && outputFilename.trim() !== '') {
-        // Ensure filename ends with .mp4
         let name = outputFilename.trim();
         if (!/\.[^/.]+$/.test(name)) name = name + '.mp4';
         form.append('outputFilename', name);
+      }
+
+      if (saveFolder && saveFolder.trim() !== '') {
+        form.append('saveFolder', saveFolder.trim());
       }
 
       // debug: print form contents
@@ -290,15 +295,18 @@ export default function SplicePage() {
             <label>End</label>
             <div>{currentEnd == null ? '—' : fmt(currentEnd)}</div>
           </div>
+          <div className="btns-flex">
+            <button onClick={setStart} disabled={!fileBlob}>Set Start</button>
+            <button onClick={setEnd} disabled={!fileBlob}>Set End</button>
+          </div>
         </div>
+
         <div className="btns">
-          <button onClick={setStart} disabled={!fileBlob}>Set Start</button>
-          <button onClick={setEnd} disabled={!fileBlob}>Set End</button>
           <button onClick={addRange} disabled={!fileBlob || currentStart == null || currentEnd == null}>Add Range</button>
           <button onClick={() => { setRanges([]); }}>Clear</button>
 
-          {/* New inputs for rotate and filename */}
-          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', marginLeft: '8px' }}>
+          {/* Inputs for rotate, filename, save folder */}
+          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', marginLeft: '8px', flexWrap: 'wrap' }}>
             <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }} className="output-name">
               <span style={{ fontSize: '12px' }}>Rotate°</span>
               <input
@@ -310,7 +318,6 @@ export default function SplicePage() {
                 onChange={(e) => {
                   let v = Number(e.target.value);
                   if (!isFinite(v)) v = 0;
-                  // normalize to 0-360
                   v = ((v % 360) + 360) % 360;
                   setRotateDeg(v);
                 }}
@@ -318,6 +325,7 @@ export default function SplicePage() {
                 disabled={!fileBlob}
               />
             </div>
+
             <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }} className="output-name">
               <span style={{ fontSize: '12px' }}>Filename</span>
               <input
@@ -326,6 +334,19 @@ export default function SplicePage() {
                 value={outputFilename}
                 onChange={(e) => setOutputFilename(e.target.value)}
                 style={{ width: '160px' }}
+                className="output-name"
+                disabled={!fileBlob}
+              />
+            </div>
+
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }} className="output-name">
+              <span style={{ fontSize: '12px' }}>Save Folder</span>
+              <input
+                type="text"
+                placeholder="/absolute/path"
+                value={saveFolder}
+                onChange={(e) => setSaveFolder(e.target.value)}
+                style={{ width: '240px' }}
                 className="output-name"
                 disabled={!fileBlob}
               />
