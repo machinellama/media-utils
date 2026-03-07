@@ -19,8 +19,8 @@ export default function WatchPage(props) {
   const [playingIndex, setPlayingIndex] = useState(-1);
   const [expandedMap, setExpandedMap] = useState({});
   const [mode, setMode] = useState('single');
-  const [sortBy, setSortBy] = useState('updated');
-  const [sortOrder, setSortOrder] = useState('desc');
+  const [sortBy, setSortBy] = useState(localStorage.getItem('watch_sort_by') || 'updated');
+  const [sortOrder, setSortOrder] = useState(localStorage.getItem('watch_sort_order') || 'desc');
   const [deleting, setDeleting] = useState(false);
 
   async function deleteFile(relPath) {
@@ -187,42 +187,30 @@ export default function WatchPage(props) {
     persistHistory(updated);
   }
 
-  function onPickFolder(e) {
-    const v = e.target.value.trim();
-    if (!v) return;
-    setRootPath(v);
+  function updateRootFolder(newPath) {
+    console.log({ newPath });
+    if (!newPath) return;
+    setRootPath(newPath);
+    if (folderRef.current) folderRef.current.value = newPath;
     setSelected(null);
     setPreviewURL(null);
     setPlaylist([]);
     setPlayingIndex(-1);
     setMode('single');
-    saveFolderToHistory(v);
+    saveFolderToHistory(newPath);
+  }
+
+  function onPickFolder(e) {
+    updateRootFolder(e.target.value);
   }
 
   function onOpenClick() {
     if (!folderRef.current) return;
-    const v = folderRef.current.value.trim();
-    if (!v) return;
-    setRootPath(v);
-    setSelected(null);
-    setPreviewURL(null);
-    setPlaylist([]);
-    setPlayingIndex(-1);
-    setMode('single');
-    saveFolderToHistory(v);
+    updateRootFolder(folderRef.current.value);
   }
 
   function onHistorySelect(e) {
-    const v = e.target.value;
-    if (!v) return;
-    if (folderRef.current) folderRef.current.value = v;
-    setRootPath(v);
-    setSelected(null);
-    setPreviewURL(null);
-    setPlaylist([]);
-    setPlayingIndex(-1);
-    setMode('single');
-    saveFolderToHistory(v);
+    updateRootFolder(e.target.value);
   }
 
   function toggleFolder(key) {
@@ -300,6 +288,12 @@ export default function WatchPage(props) {
               {isExpanded ? '▾' : '▸'}
             </button>
             <div className="folder-name">{n.name}</div>
+            <button className="toggle-btn" onClick={() => {
+              console.log({ n });
+              updateRootFolder(n.absolutePath || n.path);
+            }}>
+              →
+            </button>
           </div>
           {isExpanded && (
             <div className="children">
@@ -428,8 +422,8 @@ export default function WatchPage(props) {
   }
 
   return (
-    <div className="watch-container">
-      <aside className="watch-left">
+    <div className="watch-container fullscreen">
+      <aside className="watch-left fill-height scroll">
         <div className="controls-top">
           <input ref={folderRef} type="text" placeholder="Enter folder path (absolute)" onBlur={onPickFolder} />
           <button onClick={onOpenClick}>Open</button>
@@ -450,7 +444,11 @@ export default function WatchPage(props) {
         <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginTop: '8px' }}>
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
             <span>Sort:</span>
-            <select className="history-select" value={sortBy} onChange={e => setSortBy(e.target.value)}>
+            <select className="history-select" value={sortBy} onChange={(e) => {
+              const sortValue = e.target.value;
+              setSortBy(sortValue);
+              localStorage.setItem('watch_sort_by', sortValue);
+            }}>
               <option value="updated">Updated</option>
               <option value="name">Name</option>
               <option value="size">Size</option>
@@ -458,7 +456,11 @@ export default function WatchPage(props) {
           </div>
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
             <span>Order:</span>
-            <select className="history-select" value={sortOrder} onChange={e => setSortOrder(e.target.value)}>
+            <select className="history-select" value={sortOrder} onChange={(e) => {
+              const sortValue = e.target.value;
+              setSortOrder(sortValue);
+              localStorage.setItem('watch_sort_order', sortValue);
+            }}>
               <option value="asc">asc</option>
               <option value="desc">desc</option>
             </select>
@@ -466,12 +468,20 @@ export default function WatchPage(props) {
         </div>
 
         <div className="library" style={{ marginTop: '8px' }}>
+          {rootPath && (
+            <div className="folder-header">
+              <button className="toggle-btn" onClick={() => updateRootFolder(rootPath.split('/').slice(0, -1).join('/'))}>
+                ↑
+              </button>
+              <div className="folder-name">{rootPath}</div>
+            </div>
+          )}
           {tree.length === 0 && <div className="empty">No videos. Enter folder path above and press Open.</div>}
           {renderTree(tree)}
         </div>
       </aside>
 
-      <main className="watch-main">
+      <main className="watch-main fill-height">
         <div className="player-top">
           <div className="title">{selected || 'No video selected'}</div>
           <div className="status">{status}</div>
@@ -486,7 +496,7 @@ export default function WatchPage(props) {
 
           <div style={{ marginLeft: 'auto' }}>{mode === 'single' ? 'Mode: single' : mode === 'random' ? 'Mode: random' : mode === 'all' ? 'Mode: all' : 'Mode: all-random'}</div>
         </div>
-        <div className="player-box">
+        <div className="player-box fill-height">
           {previewURL ? (
             previewURL.startsWith('blob:') ? (
               <video ref={videoRef} src={previewURL} controls autoPlay style={{ width: '100%', height: '100%' }} />

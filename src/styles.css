@@ -21,7 +21,7 @@ body{
   padding:28px;
 }
 .app-container{
-  width:1600px;
+  width:2000px;
   max-width:calc(100% - 48px);
   background:linear-gradient(180deg,var(--card),rgba(11,17,32,0.9));
   border-radius:12px;

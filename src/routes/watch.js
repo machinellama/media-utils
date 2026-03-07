@@ -26,6 +26,7 @@ module.exports = () => {
           if (it.isDirectory()) {
             folders.push(walk(full));
           } else if (it.isFile()) {
+            // ... (keep the existing file logic inside this else-if)
             const ext = path.extname(it.name).toLowerCase();
             if (VIDEO_EXTS.includes(ext)) {
               const rel = path.relative(abs, full);
@@ -35,7 +36,8 @@ module.exports = () => {
             }
           }
         }
-        return { name: path.basename(dir), files, folders };
+        // MODIFIED RETURN OBJECT:
+        return { name: path.basename(dir), absolutePath: dir.replace(/\\/g, '/'), files, folders };
       }
       const tree = walk(abs);
       const flat = all.map(a => ({ name: a.name, path: a.path, size: a.size, mtimeMs: a.mtimeMs }));

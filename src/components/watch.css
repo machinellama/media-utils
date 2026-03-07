@@ -56,6 +56,9 @@
   flex-direction:column;
   gap:8px;
   font-size:13px;
+  max-height: 60rem;
+  height: 100%;
+  overflow-y: scroll;
 }
 .empty{color:var(--muted);padding:18px;text-align:center}
 
