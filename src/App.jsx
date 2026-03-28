@@ -13,7 +13,6 @@ export default function App() {
   return (
     <div className="app-container">
       <header className="app-header">
-        <h1>FinallyVideo</h1>
         <nav className="tabs">
           <button className={page === 'watch' ? 'active' : ''} onClick={() => setPage('watch')}>Watch</button>
           <button className={page === 'splice' ? 'active' : ''} onClick={() => setPage('splice')}>Splice</button>

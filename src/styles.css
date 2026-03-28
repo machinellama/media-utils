@@ -30,7 +30,10 @@ body{
 }
 .app-header{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px}
 .app-header h1{margin:0;font-size:18px}
-.tabs{display:flex;gap:8px}
+.tabs{
+  display:block;
+  gap:8px
+}
 .tabs button{
   background:transparent;border:0;padding:8px 12px;border-radius:8px;color:var(--muted);cursor:pointer;font-weight:700;
 }
