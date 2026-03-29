@@ -500,7 +500,7 @@ export default function WatchPage(props) {
 
           <div style={{ marginLeft: 'auto' }}>{mode === 'single' ? 'Mode: single' : mode === 'random' ? 'Mode: random' : mode === 'all' ? 'Mode: all' : 'Mode: all-random'}</div>
         </div>
-        <div className="player-box fill-height w-full">
+        <div className="player-box fill-height w-full test">
           {previewURL ? (
             previewURL.startsWith('blob:') ? (
               <video ref={videoRef} src={previewURL} controls autoPlay style={{ width: '100%', height: '100%' }} />
