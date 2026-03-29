@@ -202,11 +202,9 @@ export default function ImagePage() {
               size="sm"
               options={history.map(h => ({ value: h, label: h }))}
               onSearch={(e) => {
-                console.log('dropdown onSearch', e.target.value);
                 setRootPath(e.target.value)
               }}
               onChange={(e) => {
-                console.log('dropdown change', e.target.value);
                 setRootPath(e.target.value)
               }}
               value={rootPath}
@@ -241,6 +239,12 @@ export default function ImagePage() {
                   {zoom !== 1 && (
                     <button className="btn btn-ghost" onClick={resetZoom}>Reset Zoom</button>
                   )}
+                  <Button className="cloud-3" color="stone-10" onClick={() => {
+                    if (images.length) {
+                      setSelectedIndex(Math.floor(Math.random() * images.length));
+                      setViewMode('detail');
+                    }
+                  }} text="Random" size="sm" />
                   <button className="btn btn-ghost" onClick={() => {
                     const cur = images[selectedIndex].path;
                     const parts = cur.split('.');
