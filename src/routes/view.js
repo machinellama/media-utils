@@ -9,30 +9,40 @@ const IMG_EXTS = ['.jpg', '.jpeg', '.png', '.webp', '.gif', '.avif'];
 module.exports = () => {
   const router = express.Router();
 
-  // List images in a folder
   router.post('/list', express.json(), async (req, res) => {
     const { folder } = req.body;
     if (!folder) return res.status(400).json({ error: 'No folder provided' });
 
     try {
       const absRoot = path.resolve(folder);
-      const items = fs.readdirSync(absRoot, { withFileTypes: true });
+      const images = [];
 
-      const images = items
-        .filter(it => it.isFile() && IMG_EXTS.includes(path.extname(it.name).toLowerCase()))
-        .map(it => {
-          const fullPath = path.join(absRoot, it.name);
-          const stat = fs.statSync(fullPath);
-          return {
-            name: it.name,
-            path: it.name, // relative to root
-            size: stat.size,
-            mtime: stat.mtimeMs
-          };
+      const scanDir = (dir, relativePath = '') => {
+        const items = fs.readdirSync(dir, { withFileTypes: true });
+
+        items.forEach(it => {
+          const fullPath = path.join(dir, it.name);
+          const relPath = path.join(relativePath, it.name);
+
+          if (it.isDirectory()) {
+            // Recurse into subdirectory
+            scanDir(fullPath, relPath);
+          } else if (it.isFile() && IMG_EXTS.includes(path.extname(it.name).toLowerCase())) {
+            const stat = fs.statSync(fullPath);
+            images.push({
+              name: it.name,
+              path: relPath, // relative path including subdirs
+              size: stat.size,
+              mtime: stat.mtimeMs
+            });
+          }
         });
+      };
 
+      scanDir(absRoot);
       res.json({ images });
     } catch (e) {
+      console.error(e);
       res.status(500).json({ error: 'Failed to scan directory' });
     }
   });

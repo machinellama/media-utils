@@ -416,13 +416,17 @@ export default function WatchPage(props) {
         <div className="controls-top">
           <Dropdown
             className="cloud-3 w-full"
-            showClear={false}
             color="green-7"
             textInputProps={{
-              showClear: true,
               outline: false,
               dropdownArrowProps: {
                 className: 'green-7'
+              },
+              onKeyDown: (e) => {
+                if (e.key === 'Enter') {
+                  console.log('dropdown search', e.target.value);
+                  updateRootFolder(e.target.value)
+                }
               }
             }}
             optionContainerProps={{
@@ -434,7 +438,10 @@ export default function WatchPage(props) {
                 label: h
               }
             })}
-            onChange={(e) => updateRootFolder(e.target.value)}
+            onChange={(e) => {
+              console.log(e.target.value);
+              updateRootFolder(e.target.value)
+            }}
             value={rootPath}
           />
         </div>

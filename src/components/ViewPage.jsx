@@ -14,14 +14,14 @@ export default function ImagePage() {
   const [images, setImages] = useState([]);
   const [selectedIndex, setSelectedIndex] = useState(-1);
   const [viewMode, setViewMode] = useState('grid');
-  
+
   // Cropping States
   const [isCropping, setIsCropping] = useState(false);
-  const [crop, setCrop] = useState(); 
+  const [crop, setCrop] = useState();
   const [completedCrop, setCompletedCrop] = useState(null);
   const [rotation, setRotation] = useState(0);
   const [newFileName, setNewFileName] = useState('');
-  
+
   const [showDeleteModal, setShowDeleteModal] = useState(false);
 
   const activeThumbnailRef = useRef(null);
@@ -91,7 +91,7 @@ export default function ImagePage() {
     if (!completedCrop || !imgRef.current) return alert("Please select a crop area");
 
     const image = imgRef.current;
-    
+
     // Calculate the scale between display size and natural size
     const scaleX = image.naturalWidth / image.width;
     const scaleY = image.naturalHeight / image.height;
@@ -111,14 +111,14 @@ export default function ImagePage() {
         body: JSON.stringify({
           folder: rootPath,
           file: images[selectedIndex].path,
-          cropArea: actualCrop, 
+          cropArea: actualCrop,
           rotation: rotation,
           newName: newFileName
         })
       });
       if (res.ok) {
         setIsCropping(false);
-        scanFolder(); 
+        scanFolder();
       }
     } catch (e) { alert("Crop failed"); }
   };
@@ -130,27 +130,35 @@ export default function ImagePage() {
           <div className="flex">
             <Dropdown
               className="cloud-3 stone-10-bg w-full mr-1/2"
-              showClear={false}
               color="green-7"
               textInputProps={{
-                showClear: true,
                 outline: false,
                 inputProps: { className: 'min-w-30 w-full stone-10-bg cloud-3' },
                 className: 'stone-10-bg cloud-3 min-w-30 w-full',
                 dropdownArrowProps: { className: 'green-7' }
               }}
+              optionContainerProps={{
+                className: 'stone-10 w-fit'
+              }}
               size="sm"
               options={history.map(h => ({ value: h, label: h }))}
-              onChange={(e) => setRootPath(e.target.value)}
+              onSearch={(e) => {
+                console.log('dropdown onSearch', e.target.value);
+                setRootPath(e.target.value)
+              }}
+              onChange={(e) => {
+                console.log('dropdown change', e.target.value);
+                setRootPath(e.target.value)
+              }}
               value={rootPath}
             />
             <Button className="cloud-3 mr-1/2" color="stone-10" onClick={() => scanFolder()} text="Search" size="sm" />
             <Button className="cloud-3" color="stone-10" onClick={() => {
-                if (images.length) {
-                  setSelectedIndex(Math.floor(Math.random() * images.length));
-                  setViewMode('detail');
-                }
-              }} text="Random" size="sm" />
+              if (images.length) {
+                setSelectedIndex(Math.floor(Math.random() * images.length));
+                setViewMode('detail');
+              }
+            }} text="Random" size="sm" />
           </div>
         ) : (
           <>
@@ -163,7 +171,7 @@ export default function ImagePage() {
                 </>
               )}
             </div>
-            
+
             <div style={{ flex: 1, textAlign: 'center', fontSize: '13px', color: '#888', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {isCropping ? "Edit Mode" : images[selectedIndex]?.name}
             </div>
@@ -177,7 +185,7 @@ export default function ImagePage() {
                     const ext = parts.pop();
                     setNewFileName(`${parts.join('.')}_cropped.${ext}`);
                     setRotation(0);
-                    setCrop(undefined); 
+                    setCrop(undefined);
                     setIsCropping(true);
                   }}>Crop</button>
                   <button className="btn btn-danger" onClick={() => setShowDeleteModal(true)}>Delete</button>
@@ -217,14 +225,14 @@ export default function ImagePage() {
                     ref={imgRef}
                     src={getImgUrl(images[selectedIndex].path)}
                     alt="Crop target"
-                    style={{ 
-                      maxHeight: '75vh', 
+                    style={{
+                      maxHeight: '75vh',
                       maxWidth: '100%',
-                      transform: `rotate(${rotation}deg)` 
+                      transform: `rotate(${rotation}deg)`
                     }}
                   />
                 </ReactCrop>
-                
+
                 <div className="crop-controls-overlay">
                   <div className="control-row">
                     <label>Rotate</label>
@@ -236,13 +244,13 @@ export default function ImagePage() {
               <img src={getImgUrl(images[selectedIndex].path)} alt="" />
             )}
           </div>
-          
+
           <div className="carousel-bar">
             {images.map((img, idx) => (
-              <div 
-                key={img.path} 
+              <div
+                key={img.path}
                 ref={idx === selectedIndex ? activeThumbnailRef : null}
-                className={`carousel-item ${idx === selectedIndex ? 'active' : ''}`} 
+                className={`carousel-item ${idx === selectedIndex ? 'active' : ''}`}
                 onClick={() => { setSelectedIndex(idx); setIsCropping(false); }}
               >
                 <img src={getImgUrl(img.path, true)} alt="" />
@@ -255,9 +263,9 @@ export default function ImagePage() {
       {showDeleteModal && (
         <div className="modal-overlay">
           <div className="modal-content">
-            <h3 style={{marginTop:0}}>Delete?</h3>
+            <h3 style={{ marginTop: 0 }}>Delete?</h3>
             <p>Move this image to trash?</p>
-            <div className="button-group" style={{justifyContent: 'center', marginTop: '20px'}}>
+            <div className="button-group" style={{ justifyContent: 'center', marginTop: '20px' }}>
               <button className="btn btn-danger" onClick={handleDelete}>Delete</button>
               <button className="btn btn-ghost" onClick={() => setShowDeleteModal(false)}>Cancel</button>
             </div>
