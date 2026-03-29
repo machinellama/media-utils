@@ -1,18 +1,40 @@
 // src/App.jsx
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import SplicePage from './components/SplicePage';
 import CombinePage from './components/CombinePage';
 import WatchPage from './components/WatchPage';
+import ViewPage from './components/ViewPage';
 
 import { Button, classnames } from 'finallyreact';
 
 import 'finallyreact/main.css';
 import './styles.css';
 
+const PAGE_KEY = 'lastSelectedPage';
+
 export default function App() {
   const [page, setPage] = useState('watch');
   const [selectedVideoURL, setSelectedVideoURL] = useState(null);
   const [selectedVideoName, setSelectedVideoName] = useState(null);
+
+  // Load last view from localStorage on mount
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(PAGE_KEY);
+      if (saved) setPage(saved);
+    } catch (e) {
+      // ignore localStorage errors
+    }
+  }, []);
+
+  // Persist page changes to localStorage
+  useEffect(() => {
+    try {
+      localStorage.setItem(PAGE_KEY, page);
+    } catch (e) {
+      // ignore localStorage errors
+    }
+  }, [page]);
 
   function getButton(name) {
     const active = name === page;
@@ -54,6 +76,10 @@ export default function App() {
             setSelectedVideoName(name);
             setPage('splice');
           }} />
+        )}
+
+        {page === 'view' && (
+          <ViewPage />
         )}
       </main>
     </div>
