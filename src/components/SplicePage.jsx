@@ -1,5 +1,7 @@
 // src/SplicePage.jsx
 import React, { useRef, useState, useEffect } from 'react';
+import { NumberInput, TextInput } from 'finallyreact';
+
 import './splice.css';
 
 function fmt(t) {
@@ -283,7 +285,7 @@ export default function SplicePage(props) {
   }
 
   return (
-    <div className="container">
+    <div className="container cloud-3">
       <div className="left-col">
         <label className="filelabel">
           <input ref={fileRef} type="file" accept="video/*" onChange={onFile} />
@@ -319,46 +321,55 @@ export default function SplicePage(props) {
           <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', marginLeft: '8px', flexWrap: 'wrap' }}>
             <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }} className="output-name">
               <span style={{ fontSize: '12px' }}>Rotate°</span>
-              <input
-                type="number"
+              <NumberInput
                 min="0"
                 max="360"
                 value={rotateDeg}
                 className="output-name"
+                size="sm"
+                color="stone-10"
                 onChange={(e) => {
                   let v = Number(e.target.value);
                   if (!isFinite(v)) v = 0;
                   v = ((v % 360) + 360) % 360;
                   setRotateDeg(v);
                 }}
-                style={{ width: '70px' }}
                 disabled={!fileBlob}
+                inputProps={{
+                  className: 'stone-10-bg cloud-3 w-fit'
+                }}
               />
             </div>
 
             <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }} className="output-name">
               <span style={{ fontSize: '12px' }}>Filename</span>
-              <input
-                type="text"
-                placeholder="optional output name"
+              <TextInput
+                placeholder="output name"
                 value={outputFilename}
                 onChange={(e) => setOutputFilename(e.target.value)}
-                style={{ width: '160px' }}
                 className="output-name"
                 disabled={!fileBlob}
+                inputProps={{
+                  className: 'stone-10-bg cloud-3 w-fit'
+                }}
+                size="sm"
+                color="stone-10"
               />
             </div>
 
             <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }} className="output-name">
               <span style={{ fontSize: '12px' }}>Save Folder</span>
-              <input
-                type="text"
+              <TextInput
                 placeholder="/absolute/path"
                 value={saveFolder}
                 onChange={(e) => setSaveFolder(e.target.value)}
-                style={{ width: '240px' }}
                 className="output-name"
                 disabled={!fileBlob}
+                inputProps={{
+                  className: 'stone-10-bg cloud-3 w-fit'
+                }}
+                size="sm"
+                color="stone-10"
               />
             </div>
           </div>

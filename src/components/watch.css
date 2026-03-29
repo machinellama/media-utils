@@ -2,9 +2,7 @@
 .watch-container{
   display:grid;
   grid-template-columns:360px 1fr;
-  gap:16px;
   height:100%;
-  padding:12px;
 }
 .watch-left{
   background:rgba(255,255,255,0.02);
@@ -47,7 +45,7 @@
   border-radius:6px;
   cursor:pointer;
   font-weight:700;
-  max-width:72px;
+  max-width:100%;
 }
 
 /* library */

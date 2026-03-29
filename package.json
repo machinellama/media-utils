@@ -15,6 +15,7 @@
   "type": "commonjs",
   "dependencies": {
     "@ffmpeg/ffmpeg": "0.11.0",
+    "autoprefixer": "10.4.27",
     "express": "5.2.1",
     "finallyreact": "1.14.6",
     "hls.js": "1.6.15",

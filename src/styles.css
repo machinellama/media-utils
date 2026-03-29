@@ -1,54 +1,6 @@
-/* src/parent.css */
-:root{
-  --bg:#0f1720;
-  --card:#0b1220;
-  --muted:#9aa4b2;
-  --accent:#10b981;
-  --primary:#2563eb;
-  --text:#e6eef6;
-  --glass:rgba(255,255,255,0.03);
-  font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial;
-}
-*{box-sizing:border-box}
-html,body,#root{height:100%}
-body{
-  margin:0;
-  background:linear-gradient(180deg,var(--bg),#071021);
-  color:var(--text);
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  padding:28px;
-}
-.app-container{
-  width:2000px;
-  max-width:calc(100% - 48px);
-  background:linear-gradient(180deg,var(--card),rgba(11,17,32,0.9));
-  border-radius:12px;
-  padding:18px;
-  box-shadow:0 6px 30px rgba(2,6,23,0.6);
-}
-.app-header{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px}
-.app-header h1{margin:0;font-size:18px}
-.tabs{
-  display:block;
-  gap:8px
-}
-.tabs button{
-  background:transparent;border:0;padding:8px 12px;border-radius:8px;color:var(--muted);cursor:pointer;font-weight:700;
-}
-.tabs button.active{background:linear-gradient(90deg,var(--primary),var(--accent));color:#02121a}
-.app-main{min-height:480px}
-@media(max-width:880px){
-  .app-container{padding:12px}
-  .app-header{flex-direction:column;align-items:flex-start;gap:8px}
-}
-
-.output-name {
-  color: white;
-  background-color: rgb(0, 0, 0);
-  margin: 10px 15px 10px 0;
-  padding: 5px;
-  border-radius: 3px;
-  border-width: 0;
+html,
+body,
+#root {
+  height: 100%;
+  background-color: #090b0e;
 }

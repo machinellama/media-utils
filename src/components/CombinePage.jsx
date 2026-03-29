@@ -1,5 +1,7 @@
 // src/CombinePage.jsx
 import React, { useRef, useState } from 'react';
+import { TextInput, Button } from 'finallyreact';
+
 import './combine.css';
 
 export default function CombinePage(){
@@ -168,7 +170,7 @@ export default function CombinePage(){
   }
 
   return (
-    <div className="combine-container">
+    <div className="combine-container cloud-3">
       <div className="combine-left">
         <label className="filelabel">
           <input ref={inputRef} type="file" accept="video/*" multiple onChange={onFiles}/>
@@ -196,15 +198,20 @@ export default function CombinePage(){
         </div>
 
         <div className="combine-controls">
-          <div className="combine-row">
-            <input
-              type="text"
-              className="output-name"
+          <div className="flex">
+            <TextInput
               value={outputName}
-              onChange={e=>setOutputName(e.target.value)}
-              placeholder="Combined file name (e.g. mymix.mp4)"
+              onChange={e => setOutputName(e.target.value)}
+              placeholder="combined.mp4"
+              floatingPlaceholder={false}
+              inputProps={{
+                className: 'stone-10-bg cloud-3 w-fit'
+              }}
+              size="sm"
+              color="stone-10"
+              className="mr-1"
             />
-            <button onClick={combine}>Combine on server</button>
+            <Button onClick={combine} text="Combine on server" rounded={true} size="sm" className="cloud-3" color="stone-10" />
           </div>
           <div className="right-actions">
             <button onClick={()=>{

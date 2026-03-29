@@ -1,5 +1,7 @@
 // src/WatchPage.jsx
 import React, { useEffect, useRef, useState, useCallback } from 'react';
+import { Dropdown, Button } from 'finallyreact';
+
 import './watch.css';
 
 const RECENT_HISTORY_LIMIT = 10;
@@ -198,19 +200,6 @@ export default function WatchPage(props) {
     setPlayingIndex(-1);
     setMode('single');
     saveFolderToHistory(newPath);
-  }
-
-  function onPickFolder(e) {
-    updateRootFolder(e.target.value);
-  }
-
-  function onOpenClick() {
-    if (!folderRef.current) return;
-    updateRootFolder(folderRef.current.value);
-  }
-
-  function onHistorySelect(e) {
-    updateRootFolder(e.target.value);
   }
 
   function toggleFolder(key) {
@@ -422,26 +411,41 @@ export default function WatchPage(props) {
   }
 
   return (
-    <div className="watch-container fullscreen">
+    <div className="watch-container cloud-3 w-full">
       <aside className="watch-left fill-height scroll">
         <div className="controls-top">
-          <input ref={folderRef} type="text" placeholder="Enter folder path (absolute)" onBlur={onPickFolder} />
-          <button onClick={onOpenClick}>Open</button>
-          <select className="history-select" onChange={onHistorySelect} value="">
-            <option value="">Recent</option>
-            {historyList.map((h, i) => (
-              <option key={h} value={h}>{i + 1}: {h}</option>
-            ))}
-          </select>
+          <Dropdown
+            className="cloud-3 w-full"
+            showClear={false}
+            color="green-7"
+            textInputProps={{
+              showClear: true,
+              outline: false,
+              dropdownArrowProps: {
+                className: 'green-7'
+              }
+            }}
+            optionContainerProps={{
+              className: 'stone-10 w-fit'
+            }}
+            options={historyList.map((h, i) => {
+              return {
+                value: h,
+                label: h
+              }
+            })}
+            onChange={(e) => updateRootFolder(e.target.value)}
+            value={rootPath}
+          />
         </div>
 
-        <div className="controls-top" style={{ marginTop: '8px' }}>
-          <button onClick={pickRandom} className="random">Random</button>
-          <button onClick={() => { playAll(false); }}>Play all</button>
-          <button onClick={() => { playAll(true); }}>Play all random</button>
+        <div className="flex">
+          <Button onClick={pickRandom} text="Random" size="sm" rounded={true} className="mr-1/5 px-1/2 cloud-3" borderColor="purple-8" color="stone-10" />
+          <Button onClick={() => { playAll(false); }} text="Play All" size="sm" rounded={true} className="mr-1/5 px-1/2 cloud-3" borderColor="purple-8" color="stone-10" />
+          <Button onClick={() => { playAll(true); }} text="All Random" size="sm" rounded={true} className="mr-1/5 px-1/2 cloud-3" borderColor="purple-8" color="stone-10" />
         </div>
 
-        <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginTop: '8px' }}>
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
             <span>Sort:</span>
             <select className="history-select" value={sortBy} onChange={(e) => {
@@ -481,7 +485,7 @@ export default function WatchPage(props) {
         </div>
       </aside>
 
-      <main className="watch-main fill-height">
+      <main className="watch-main fill-height w-full">
         <div className="player-top">
           <div className="title">{selected || 'No video selected'}</div>
           <div className="status">{status}</div>
@@ -496,7 +500,7 @@ export default function WatchPage(props) {
 
           <div style={{ marginLeft: 'auto' }}>{mode === 'single' ? 'Mode: single' : mode === 'random' ? 'Mode: random' : mode === 'all' ? 'Mode: all' : 'Mode: all-random'}</div>
         </div>
-        <div className="player-box fill-height">
+        <div className="player-box fill-height w-full">
           {previewURL ? (
             previewURL.startsWith('blob:') ? (
               <video ref={videoRef} src={previewURL} controls autoPlay style={{ width: '100%', height: '100%' }} />
@@ -504,26 +508,28 @@ export default function WatchPage(props) {
               <video ref={videoRef} src={previewURL} controls autoPlay style={{ width: '100%', height: '100%' }} />
             )
           ) : (
-            <div className="placeholder">Select a file to play</div>
+            <div className="placeholder w-full">Select a file to play</div>
           )}
         </div>
         <div className="player-actions" style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
-          <button
+          <Button
             onClick={() => { if (selected) deleteFile(selected); }}
             disabled={!selected || deleting}
-            className="output-name"
-          >
-            {deleting ? 'Deleting...' : 'Delete'}
-          </button>
-          <button
+            className="output-name cloud-3 mx-1/2"
+            text={deleting ? 'Deleting...' : 'Delete'}
+            size="sm"
+            color="stone-10"
+          />
+          <Button
             onClick={() => {
               props.setSelectedVideoURL?.(previewURL, selected);
             }}
             disabled={!selected}
-            className="output-name"
-          >
-            Splice
-          </button>
+            className="output-name cloud-3"
+            text="Splice"
+            size="sm"
+            color="stone-10"
+          />
         </div>
 
         <div className="progress-row">
