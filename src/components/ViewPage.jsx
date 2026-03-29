@@ -7,6 +7,9 @@ import './view.css';
 
 const HISTORY_LIMIT = 10;
 const BASE_URL = 'http://localhost:3001/view';
+const ZOOM_STEP = 0.15;
+const MIN_ZOOM = 1;
+const MAX_ZOOM = 30;
 
 export default function ImagePage() {
   const [rootPath, setRootPath] = useState(localStorage.getItem('img_root') || '');
@@ -22,10 +25,19 @@ export default function ImagePage() {
   const [rotation, setRotation] = useState(0);
   const [newFileName, setNewFileName] = useState('');
 
+  // Zoom States
+  const [zoom, setZoom] = useState(1);
+  const [panX, setPanX] = useState(0);
+  const [panY, setPanY] = useState(0);
+  const [isPanning, setIsPanning] = useState(false);
+  const [panStart, setPanStart] = useState({ x: 0, y: 0 });
+
   const [showDeleteModal, setShowDeleteModal] = useState(false);
 
   const activeThumbnailRef = useRef(null);
-  const imgRef = useRef(null); // Ref for the image to calculate scale
+  const imgRef = useRef(null);
+  const detailViewRef = useRef(null);
+  const imageContainerRef = useRef(null);
 
   useEffect(() => {
     if (viewMode === 'detail' && activeThumbnailRef.current) {
@@ -35,6 +47,13 @@ export default function ImagePage() {
         inline: 'center'
       });
     }
+  }, [selectedIndex, viewMode]);
+
+  // Reset zoom when changing images or exiting detail view
+  useEffect(() => {
+    setZoom(1);
+    setPanX(0);
+    setPanY(0);
   }, [selectedIndex, viewMode]);
 
   const getImgUrl = (path, isThumb = false) => {
@@ -92,11 +111,9 @@ export default function ImagePage() {
 
     const image = imgRef.current;
 
-    // Calculate the scale between display size and natural size
     const scaleX = image.naturalWidth / image.width;
     const scaleY = image.naturalHeight / image.height;
 
-    // Adjust coordinates for the actual image resolution
     const actualCrop = {
       x: completedCrop.x * scaleX,
       y: completedCrop.y * scaleY,
@@ -121,6 +138,48 @@ export default function ImagePage() {
         scanFolder();
       }
     } catch (e) { alert("Crop failed"); }
+  };
+
+  const handleImageClick = () => {
+    if (isCropping || zoom === 1) {
+      setZoom(zoom === 1 ? 2 : 1);
+      setPanX(0);
+      setPanY(0);
+    }
+  };
+
+  const handleWheel = (e) => {
+    if (isCropping) return;
+    e.preventDefault();
+    const newZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, zoom + (e.deltaY > 0 ? -ZOOM_STEP : ZOOM_STEP)));
+    setZoom(newZoom);
+  };
+
+  const handleMouseDown = (e) => {
+    if (isCropping || zoom === 1) return;
+    e.preventDefault();
+    setIsPanning(true);
+    setPanStart({ x: e.clientX - panX, y: e.clientY - panY });
+  };
+
+  const handleMouseMove = (e) => {
+    if (!isPanning || isCropping) return;
+    e.preventDefault();
+    setPanX(e.clientX - panStart.x);
+    setPanY(e.clientY - panStart.y);
+  };
+
+  const handleMouseUp = (e) => {
+    if (isPanning) {
+      e.preventDefault();
+    }
+    setIsPanning(false);
+  };
+
+  const resetZoom = () => {
+    setZoom(1);
+    setPanX(0);
+    setPanY(0);
   };
 
   return (
@@ -179,6 +238,9 @@ export default function ImagePage() {
             <div className="button-group">
               {!isCropping ? (
                 <>
+                  {zoom !== 1 && (
+                    <button className="btn btn-ghost" onClick={resetZoom}>Reset Zoom</button>
+                  )}
                   <button className="btn btn-ghost" onClick={() => {
                     const cur = images[selectedIndex].path;
                     const parts = cur.split('.');
@@ -213,7 +275,20 @@ export default function ImagePage() {
         </div>
       ) : (
         <div className="detail-view">
-          <div className="main-image-viewport">
+          <div
+            className="main-image-viewport"
+            ref={detailViewRef}
+            onWheel={handleWheel}
+            onMouseDown={handleMouseDown}
+            onMouseMove={handleMouseMove}
+            onMouseUp={handleMouseUp}
+            onMouseLeave={handleMouseUp}
+            style={{
+              cursor: zoom > 1 ? (isPanning ? 'grabbing' : 'grab') : 'pointer',
+              userSelect: 'none',
+              WebkitUserSelect: 'none'
+            }}
+          >
             {isCropping ? (
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', maxHeight: '100%', width: '100%' }}>
                 <ReactCrop
@@ -241,7 +316,38 @@ export default function ImagePage() {
                 </div>
               </div>
             ) : (
-              <img src={getImgUrl(images[selectedIndex].path)} alt="" />
+              <div
+                ref={imageContainerRef}
+                onClick={handleImageClick}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  width: '100%',
+                  height: '100%',
+                  overflow: 'hidden',
+                  userSelect: 'none',
+                  WebkitUserSelect: 'none'
+                }}
+              >
+                <img
+                  src={getImgUrl(images[selectedIndex].path)}
+                  alt=""
+                  draggable={false}
+                  style={{
+                    transform: `scale(${zoom}) translate(${panX}px, ${panY}px)`,
+                    transformOrigin: 'center',
+                    transition: isPanning ? 'none' : 'transform 0.2s ease-out',
+                    maxWidth: '100%',
+                    maxHeight: '100%',
+                    objectFit: 'contain',
+                    userSelect: 'none',
+                    WebkitUserSelect: 'none',
+                    WebkitTouchCallout: 'none',
+                    pointerEvents: isPanning ? 'none' : 'auto'
+                  }}
+                />
+              </div>
             )}
           </div>
 
