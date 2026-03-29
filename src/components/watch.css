@@ -159,7 +159,7 @@
 
 .file-item.selected {
   background: linear-gradient(90deg, var(--primary), var(--accent));
-  color: #02121a
+  color: lightblue;
 }
 
 /* history dropdown style */
