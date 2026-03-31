@@ -207,7 +207,7 @@ export default function ImagePage() {
               }}
               value={rootPath}
             />
-            <Button className="cloud-3 mr-1/2" color="stone-10" onClick={() => scanFolder()} text="Search" size="sm" />
+            <Button className="cloud-3 mr-1/2" color="stone-10" onClick={() => scanFolder()} text="View" size="sm" />
             <Button className="cloud-3" color="stone-10" onClick={() => {
               if (images.length) {
                 setSelectedIndex(Math.floor(Math.random() * images.length));
