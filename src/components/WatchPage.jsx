@@ -423,6 +423,7 @@ export default function WatchPage(props) {
                 className: 'green-7'
               },
               onKeyDown: (e) => {
+                e?.stopPropagation();
                 if (e.key === 'Enter') {
                   console.log('dropdown search', e.target.value);
                   updateRootFolder(e.target.value)
@@ -518,22 +519,22 @@ export default function WatchPage(props) {
             <div className="placeholder w-full">Select a file to play</div>
           )}
         </div>
-        <div className="player-actions" style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
+        <div className="player-actions w-full flex justify-between">
+          <Button
+            onClick={() => {
+              props.setSelectedVideoURL?.(previewURL, selected, rootPath);
+            }}
+            disabled={!selected}
+            className="output-name cloud-3"
+            text="Splice"
+            size="sm"
+            color="stone-10"
+          />
           <Button
             onClick={() => { if (selected) deleteFile(selected); }}
             disabled={!selected || deleting}
             className="output-name cloud-3 mx-1/2"
             text={deleting ? 'Deleting...' : 'Delete'}
-            size="sm"
-            color="stone-10"
-          />
-          <Button
-            onClick={() => {
-              props.setSelectedVideoURL?.(previewURL, selected);
-            }}
-            disabled={!selected}
-            className="output-name cloud-3"
-            text="Splice"
             size="sm"
             color="stone-10"
           />

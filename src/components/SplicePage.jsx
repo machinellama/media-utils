@@ -1,6 +1,6 @@
 // src/SplicePage.jsx
 import React, { useRef, useState, useEffect } from 'react';
-import { NumberInput, TextInput } from 'finallyreact';
+import { NumberInput, TextInput, Button } from 'finallyreact';
 
 import './splice.css';
 
@@ -31,6 +31,40 @@ export default function SplicePage(props) {
   const [rotateDeg, setRotateDeg] = useState(0);
   const [outputFilename, setOutputFilename] = useState('');
   const [saveFolder, setSaveFolder] = useState(''); // server-side path to save result (optional)
+
+  const [deleting, setDeleting] = useState(false);
+
+  async function deleteFile() {
+    setDeleting(true);
+    setStatus('Deleting...');
+    console.log({ props });
+    try {
+      const resp = await fetch('http://localhost:3001/watch/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ folder: props.selectedRootPath, path: props.selectedVideoName }),
+      });
+      const j = await resp.json().catch(() => ({}));
+      if (!resp.ok || j.error) {
+        setStatus(j.error || 'Delete failed');
+        setDeleting(false);
+        return;
+      }
+
+      // on success clear UI
+      setFileBlob(null);
+      setSourceUrl(null);
+      setOutputFilename('');
+      setSaveFolder('');
+      resetStateOnNewFile();
+      setStatus('Deleted');
+      setDeleting(false);
+    } catch (err) {
+      console.error('[delete] failed', err);
+      setStatus('Delete failed');
+      setDeleting(false);
+    }
+  }
 
   async function processFileURL(url, f) {
     try {
@@ -307,9 +341,34 @@ export default function SplicePage(props) {
             <label>End</label>
             <div>{currentEnd == null ? '—' : fmt(currentEnd)}</div>
           </div>
-          <div className="btns-flex">
-            <button onClick={setStart} disabled={!fileBlob}>Set Start</button>
-            <button onClick={setEnd} disabled={!fileBlob}>Set End</button>
+          <div className="flex justify-between w-full">
+            <div>
+              <Button
+                onClick={setStart}
+                disabled={!fileBlob}
+                text="Set Start"
+                size="sm"
+                color="stone-10"
+                className="cloud-3 mr-1/2"
+              />
+              <Button
+                onClick={setEnd}
+                disabled={!fileBlob}
+                text="Set End"
+                size="sm"
+                color="stone-10"
+                className="cloud-3 mr-1/2"
+              />
+            </div>
+
+            <Button
+              onClick={deleteFile}
+              disabled={!fileBlob || deleting}
+              className="output-name cloud-3 mx-1/2"
+              text={deleting ? 'Deleting...' : 'Delete'}
+              size="sm"
+              color="stone-10"
+            />
           </div>
         </div>
 

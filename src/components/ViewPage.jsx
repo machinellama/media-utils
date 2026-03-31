@@ -32,8 +32,6 @@ export default function ImagePage() {
   const [isPanning, setIsPanning] = useState(false);
   const [panStart, setPanStart] = useState({ x: 0, y: 0 });
 
-  const [showDeleteModal, setShowDeleteModal] = useState(false);
-
   const activeThumbnailRef = useRef(null);
   const imgRef = useRef(null);
   const detailViewRef = useRef(null);
@@ -100,7 +98,6 @@ export default function ImagePage() {
       });
       const updated = images.filter((_, i) => i !== selectedIndex);
       setImages(updated);
-      setShowDeleteModal(false);
       if (updated.length === 0) setViewMode('grid');
       else setSelectedIndex(prev => Math.min(prev, updated.length - 1));
     } catch (e) { alert("Delete failed"); }
@@ -202,6 +199,7 @@ export default function ImagePage() {
               size="sm"
               options={history.map(h => ({ value: h, label: h }))}
               onSearch={(e) => {
+                e?.stopPropagation();
                 setRootPath(e.target.value)
               }}
               onChange={(e) => {
@@ -254,7 +252,7 @@ export default function ImagePage() {
                     setCrop(undefined);
                     setIsCropping(true);
                   }}>Crop</button>
-                  <button className="btn btn-danger" onClick={() => setShowDeleteModal(true)}>Delete</button>
+                  <button className="btn btn-danger" onClick={handleDelete}>Delete</button>
                 </>
               ) : (
                 <>
@@ -366,19 +364,6 @@ export default function ImagePage() {
                 <img src={getImgUrl(img.path, true)} alt="" />
               </div>
             ))}
-          </div>
-        </div>
-      )}
-
-      {showDeleteModal && (
-        <div className="modal-overlay">
-          <div className="modal-content">
-            <h3 style={{ marginTop: 0 }}>Delete?</h3>
-            <p>Move this image to trash?</p>
-            <div className="button-group" style={{ justifyContent: 'center', marginTop: '20px' }}>
-              <button className="btn btn-danger" onClick={handleDelete}>Delete</button>
-              <button className="btn btn-ghost" onClick={() => setShowDeleteModal(false)}>Cancel</button>
-            </div>
           </div>
         </div>
       )}

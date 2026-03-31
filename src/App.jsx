@@ -16,6 +16,7 @@ export default function App() {
   const [page, setPage] = useState('watch');
   const [selectedVideoURL, setSelectedVideoURL] = useState(null);
   const [selectedVideoName, setSelectedVideoName] = useState(null);
+  const [selectedRootPath, setSelectedRootPath] = useState(null);
 
   // Load last view from localStorage on mount
   useEffect(() => {
@@ -41,11 +42,10 @@ export default function App() {
 
     return (
       <Button
-        className={classnames('w-fit mb-1/2', active ? 'cloud-10' : 'cloud-3')}
+        className={classnames('w-full mb-1/2', active ? 'cloud-10' : 'cloud-3')}
         onClick={() => setPage(name)}
         text={name}
         size="sm"
-        rounded={true}
         color={name === page ? 'sky-4' : 'cloud-10'}
       />
     )
@@ -65,15 +65,20 @@ export default function App() {
 
       <main className="app-main w-full">
         {page === 'splice' && (
-          <SplicePage selectedVideoURL={selectedVideoURL} selectedVideoName={selectedVideoName} />
+          <SplicePage
+            selectedVideoURL={selectedVideoURL}
+            selectedVideoName={selectedVideoName}
+            selectedRootPath={selectedRootPath}
+          />
         )}
         {page === 'combine' && (
           <CombinePage />
         )}
         {page === 'watch' && (
-          <WatchPage setSelectedVideoURL={(url, name) => {
+          <WatchPage setSelectedVideoURL={(url, name, rootPath) => {
             setSelectedVideoURL(url);
             setSelectedVideoName(name);
+            setSelectedRootPath(rootPath);
             setPage('splice');
           }} />
         )}
