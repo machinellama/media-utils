@@ -217,47 +217,107 @@ export default function WatchPage(props) {
     setStatus('Preparing stream...');
     setProgress(0.02);
     try {
-      const resp = await fetch('http://localhost:3001/watch/stream-info', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ folder: rootPath, path: relPath })
-      });
-      if (!resp.ok) {
-        const err = await resp.json().catch(() => ({ error: 'server' }));
-        setStatus(err.error || 'server error');
-        setProgress(0);
-        return;
-      }
-      const meta = await resp.json();
-      if (meta.remuxNeeded) {
+      const streamURL = `http://localhost:3001/watch/file?folder=${encodeURIComponent(rootPath)}&path=${encodeURIComponent(relPath)}`;
+      const v = videoRef?.current;
+
+      const attemptServerRemux = async () => {
         setStatus('Remuxing for browser playback...');
         setProgress(0.05);
-        const remuxResp = await fetch('http://localhost:3001/watch/remux', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ folder: rootPath, path: relPath })
-        });
-        if (!remuxResp.ok) { setStatus('Remux failed'); setProgress(0); return; }
-        const blob = await remuxResp.blob();
-        const url = URL.createObjectURL(blob);
-        setPreviewURL(url);
+        try {
+          // Fetch the remote file as a blob so we can upload it to the splice/remux endpoint
+          const fileResp = await fetch(streamURL);
+          if (!fileResp.ok) throw new Error('fetch file failed');
+          const blob = await fileResp.blob();
+          const fileName = relPath.split('/').pop() || 'video';
+          const form = new FormData();
+          form.append('file', new File([blob], fileName, { type: blob.type }));
+          form.append('remuxOnly', '1');
+
+          const remuxResp = await fetch('http://localhost:3001/splice?remuxOnly=1', {
+            method: 'POST',
+            body: form,
+          });
+          if (!remuxResp.ok) {
+            const err = await remuxResp.json().catch(() => ({ error: 'server error' }));
+            setStatus('Remux failed: ' + (err.error || remuxResp.statusText));
+            setProgress(0);
+            return;
+          }
+
+          // Stream response -> blob with progress if length present
+          const reader = remuxResp.body.getReader();
+          const contentLength = remuxResp.headers.get('Content-Length');
+          let received = 0;
+          const chunks = [];
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            chunks.push(value);
+            received += value.length;
+            if (contentLength) setProgress(0.05 + 0.6 * (received / contentLength));
+          }
+          const out = new Blob(chunks, { type: 'video/mp4' });
+          const url = URL.createObjectURL(out);
+          setPreviewURL(url);
+          setSelected(relPath);
+          setStatus('');
+          setProgress(1);
+          setTimeout(() => setProgress(0), 600);
+        } catch (err) {
+          console.error('remux failed', err);
+          setStatus('Remux failed: ' + (err.message || 'error'));
+          setProgress(0);
+        }
+      };
+
+      // If no video element ref, just set the stream URL directly (and fall back to remux via user action)
+      if (!v) {
+        setPreviewURL(streamURL);
         setSelected(relPath);
         setStatus('');
         setProgress(1);
         setTimeout(() => setProgress(0), 600);
         return;
       }
-      const streamURL = `http://localhost:3001/watch/file?folder=${encodeURIComponent(rootPath)}&path=${encodeURIComponent(relPath)}`;
-      setPreviewURL(streamURL);
-      setSelected(relPath);
-      setStatus('');
-      setProgress(1);
-      setTimeout(() => setProgress(0), 600);
+
+      // Try to let the browser probe the remote stream; on error, fetch+upload to server remux
+      let metadataLoaded = false;
+      const onLoaded = () => {
+        metadataLoaded = true;
+        cleanup();
+        setPreviewURL(streamURL);
+        setSelected(relPath);
+        setStatus('');
+        setProgress(1);
+        setTimeout(() => setProgress(0), 600);
+      };
+      const onErr = () => {
+        cleanup();
+        attemptServerRemux();
+      };
+      const cleanup = () => {
+        v.removeEventListener('loadedmetadata', onLoaded);
+        v.removeEventListener('error', onErr);
+      };
+
+      v.pause();
+      v.src = streamURL;
+      v.load();
+      v.addEventListener('loadedmetadata', onLoaded, { once: true });
+      v.addEventListener('error', onErr, { once: true });
+
+      // If neither event fires within 1s, assume browser accepted it
+      setTimeout(() => {
+        if (!metadataLoaded) cleanup();
+      }, 1000);
+
     } catch (e) {
+      console.error('openFile failed', e);
       setStatus('Play failed');
       setProgress(0);
     }
   }
+
 
   function formatSize(size) {
     if (size >= 1024 * 1024 * 1024) {
@@ -448,9 +508,9 @@ export default function WatchPage(props) {
         </div>
 
         <div className="flex">
-          <Button onClick={pickRandom} text="Random" size="sm" rounded={true} className="mr-1/5 px-1/2 cloud-3" borderColor="purple-8" color="stone-10" />
-          <Button onClick={() => { playAll(false); }} text="Play All" size="sm" rounded={true} className="mr-1/5 px-1/2 cloud-3" borderColor="purple-8" color="stone-10" />
-          <Button onClick={() => { playAll(true); }} text="All Random" size="sm" rounded={true} className="mr-1/5 px-1/2 cloud-3" borderColor="purple-8" color="stone-10" />
+          <Button onClick={pickRandom} text="Random" size="sm" rounded={false} className="mr-1/5 px-1/2 cloud-3" borderColor="purple-8" color="stone-10" />
+          <Button onClick={() => { playAll(false); }} text="Play All" size="sm" rounded={false} className="mr-1/5 px-1/2 cloud-3" borderColor="purple-8" color="stone-10" />
+          <Button onClick={() => { playAll(true); }} text="All Random" size="sm" rounded={false} className="mr-1/5 px-1/2 cloud-3" borderColor="purple-8" color="stone-10" />
         </div>
 
         <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>

@@ -79,18 +79,6 @@ module.exports = () => {
     stream.pipe(res);
   });
 
-  router.post('/stream-info', express.json(), (req, res) => {
-    const { folder, path: rel } = req.body || {};
-    if (!folder || !rel) return res.status(400).json({ error: 'missing' });
-    const absRoot = path.resolve(folder);
-    const absPath = path.resolve(absRoot, rel);
-    if (!absPath.startsWith(absRoot)) return res.status(403).json({ error: 'forbidden' });
-    if (!fs.existsSync(absPath)) return res.status(404).json({ error: 'not found' });
-    const ext = path.extname(absPath).toLowerCase();
-    const playable = playableInBrowser(ext);
-    res.json({ remuxNeeded: !playable });
-  });
-
   router.post('/remux', express.json(), async (req, res) => {
     const { folder, path: rel } = req.body || {};
     if (!folder || !rel) return res.status(400).json({ error: 'missing' });
