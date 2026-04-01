@@ -1,6 +1,6 @@
 # AI_CONTRIBUTING
 
-Thanks for helping! Automated contributors (AI agents, bots, scripts) are explicitly welcome here.
+Thanks for helping! Both human and automated contributors (AI agents, bots, scripts) are explicitly welcome here.
 
 ## Scope
 - Fix bugs, improve performance, add types/tests/docs, modernize build/config, update dependencies, and small refactors.
