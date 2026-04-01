@@ -5,5 +5,6 @@ When contributing to this project, feel free to:
 - Refactor code that could be cleaner
 - Update dependencies to their latest versions
 - Translate the README into any language
+- Star the repo
 
 All pull requests will be reviewed promptly. We value quantity.
