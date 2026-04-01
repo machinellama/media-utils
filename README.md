@@ -1,7 +1,7 @@
 React/Node app for viewing videos and images on your local filesystem, with some utility functions.
 
 - Note: only meant for running locally, not deployed/production servers.
-- Note: only tested on Linux, your milage may vary
+- Note: only tested on Linux, your mileage may vary
 
 # Setup
 - Prereq: nodejs, npm
@@ -12,19 +12,19 @@ React/Node app for viewing videos and images on your local filesystem, with some
 
 # Screenshots
 
-Watch Video
+### Watch Video
 
 <img src="images/watch.png" alt="watch video" width="800"/>
 
-Splice Video
+### Splice Video
 
 <img src="images/splice.png" alt="splice video" width="800"/>
 
-Combine Videos
+### Combine Videos
 
 <img src="images/combine.png" alt="combine videos" width="800"/>
 
-View Images
+### View Images
 
 <img src="images/view.png" alt="view images" width="800"/>
 
