@@ -11,11 +11,13 @@ const spliceRoute = require('./routes/splice')(upload);
 const combineRoute = require('./routes/combine')(upload);
 const watchRoute = require('./routes/watch')(upload);
 const viewRoute = require('./routes/view')();
+const subtitlesRoute = require('./routes/subtitles')();
 
 app.use('/splice', spliceRoute);
 app.use('/combine', combineRoute);
 app.use('/watch', watchRoute);
 app.use('/view', viewRoute);
+app.use('/subtitles', subtitlesRoute);
 
 const port = process.env.PORT || 3001;
 app.listen(port, () => console.log(`Server listening on ${port}`));

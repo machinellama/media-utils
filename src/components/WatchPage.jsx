@@ -1,6 +1,7 @@
 // src/WatchPage.jsx
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { Dropdown, Button } from 'finallyreact';
+import { Dropdown, Button, Modal } from 'finallyreact';
+import SubtitleModal from './SubtitleModal';
 
 import './watch.css';
 
@@ -24,6 +25,7 @@ export default function WatchPage(props) {
   const [sortBy, setSortBy] = useState(localStorage.getItem('watch_sort_by') || 'updated');
   const [sortOrder, setSortOrder] = useState(localStorage.getItem('watch_sort_order') || 'desc');
   const [deleting, setDeleting] = useState(false);
+  const [showSubModal, setShowSubModal] = useState(false);
 
   async function deleteFile(relPath) {
     if (!rootPath || !relPath) return;
@@ -590,14 +592,33 @@ export default function WatchPage(props) {
             size="sm"
             color="stone-10"
           />
-          <Button
-            onClick={() => { if (selected) deleteFile(selected); }}
-            disabled={!selected || deleting}
-            className="output-name cloud-3 mx-1/2"
-            text={deleting ? 'Deleting...' : 'Delete'}
-            size="sm"
-            color="stone-10"
-          />
+
+          <div className="flex">
+            <div>
+              <Button
+                onClick={() => setShowSubModal(true)}
+                text="Subs"
+                disabled={!selected || deleting}
+                className="output-name cloud-3 mr-1/2"
+                size="sm"
+                color="stone-10"
+              />
+
+              <SubtitleModal
+                filePath={`${rootPath}/${selected}`}
+                isOpen={showSubModal}
+                onClose={() => setShowSubModal(false)}
+              />
+            </div>
+            <Button
+              onClick={() => { if (selected) deleteFile(selected); }}
+              disabled={!selected || deleting}
+              className="output-name cloud-3 mr-1/2"
+              text={deleting ? 'Deleting...' : 'Delete'}
+              size="sm"
+              color="stone-10"
+            />
+          </div>
         </div>
 
         <div className="progress-row">
