@@ -82,7 +82,6 @@ export default function WatchPage(props) {
     }
   }
 
-
   useEffect(() => {
     try {
       const raw = localStorage.getItem('watch_folder_history');
@@ -215,6 +214,76 @@ export default function WatchPage(props) {
     openFile(item.path);
   }
 
+  function srtToVtt(srtText) {
+    return 'WEBVTT\n\n' + srtText.replace(/(\d{2}:\d{2}:\d{2}),(\d{3})/g, '$1.$2');
+  }
+
+  // attach or replace track
+  function setSubtitleForVideo(videoEl, vttUrl, lang = 'en', label = 'English') {
+    // remove existing injected track (we mark with data-injected)
+    const existing = videoEl.querySelector('track[data-injected="true"]');
+    if (existing) {
+      URL.revokeObjectURL(existing.src);
+      existing.remove();
+    }
+    const track = document.createElement('track');
+    track.kind = 'subtitles';
+    track.label = label;
+    track.srclang = lang;
+    track.src = vttUrl;
+    track.default = true;
+    track.setAttribute('data-injected', 'true');
+    videoEl.appendChild(track);
+    // force load of new track
+    // some browsers only create textTracks after load(), so set mode after small delay
+    setTimeout(() => {
+      const tt = videoEl.textTracks;
+      for (let i = 0; i < tt.length; i++) {
+        tt[i].mode = (tt[i].language === lang || i === tt.length - 1) ? 'showing' : 'hidden';
+      }
+    }, 200);
+  }
+
+  // call this after streamURL / previewURL is set and video element is ready
+  async function fetchAndAttachSubtitle(relPath) {
+    try {
+      const subUrl = `http://localhost:3001/watch/file?folder=${encodeURIComponent(rootPath)}&path=${encodeURIComponent(relPath)}&type=subtitle`;
+      const resp = await fetch(subUrl);
+      if (!resp.ok) {
+        // no subtitle available or error
+        return;
+      }
+      const contentType = (resp.headers.get('Content-Type') || '').toLowerCase();
+      const raw = await resp.arrayBuffer();
+      let text;
+      // assume text/* or blob; try decode
+      try {
+        text = new TextDecoder('utf-8').decode(new Uint8Array(raw));
+      } catch (e) {
+        text = null;
+      }
+
+      let vttText;
+      if (contentType.includes('vtt') || (text && text.trim().startsWith('WEBVTT'))) {
+        vttText = text;
+      } else if (contentType.includes('srt') || (text && /\d+\s*\n\d{2}:\d{2}:\d{2},\d{3}/.test(text))) {
+        vttText = srtToVtt(text);
+      } else {
+        // fallback: try treat as srt text
+        vttText = text ? srtToVtt(text) : null;
+      }
+
+      if (!vttText) return;
+
+      const vttBlob = new Blob([vttText], { type: 'text/vtt;charset=utf-8' });
+      const vttUrl = URL.createObjectURL(vttBlob);
+      const videoEl = videoRef.current;
+      if (videoEl) setSubtitleForVideo(videoEl, vttUrl, 'en', 'English');
+    } catch (err) {
+      console.warn('subtitle attach failed', err);
+    }
+  }
+
   async function openFile(relPath) {
     setStatus('Preparing stream...');
     setProgress(0.02);
@@ -308,6 +377,8 @@ export default function WatchPage(props) {
       v.addEventListener('loadedmetadata', onLoaded, { once: true });
       v.addEventListener('error', onErr, { once: true });
 
+      fetchAndAttachSubtitle(relPath);
+
       // If neither event fires within 1s, assume browser accepted it
       setTimeout(() => {
         if (!metadataLoaded) cleanup();
@@ -319,7 +390,6 @@ export default function WatchPage(props) {
       setProgress(0);
     }
   }
-
 
   function formatSize(size) {
     if (size >= 1024 * 1024 * 1024) {

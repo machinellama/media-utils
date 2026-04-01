@@ -55,9 +55,45 @@ module.exports = () => {
     const absPath = path.resolve(absRoot, rel);
     if (!absPath.startsWith(absRoot)) return res.status(403).end();
     if (!fs.existsSync(absPath)) return res.status(404).end();
+
+    // helper to find sibling .srt with same basename
+    function findSiblingSrt(videoPath) {
+      const dir = path.dirname(videoPath);
+      const base = path.basename(videoPath, path.extname(videoPath));
+      const srtPath = path.join(dir, base + '.srt');
+      if (fs.existsSync(srtPath) && fs.statSync(srtPath).isFile()) {
+        return srtPath;
+      }
+      return null;
+    }
+
+    // If client specifically requests the subtitle file: ?type=subtitle
+    if (req.query.type === 'subtitle') {
+      const srt = findSiblingSrt(absPath);
+      if (!srt) return res.status(404).json({ error: 'subtitle not found' });
+      const statSrt = fs.statSync(srt);
+      res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+      res.setHeader('Content-Length', statSrt.size);
+      const streamSrt = fs.createReadStream(srt);
+      return streamSrt.pipe(res);
+    }
+
+    // Otherwise serve video and advertise subtitle availability via headers
     const stat = fs.statSync(absPath);
     const range = req.headers.range;
     const contentType = mimeTypeFor(absPath);
+
+    const siblingSrt = findSiblingSrt(absPath);
+    if (siblingSrt) {
+      // provide a URL clients can call to fetch the subtitle (same endpoint with type=subtitle)
+      const relPath = path.relative(absRoot, siblingSrt).replace(/\\/g, '/');
+      const subtitleUrl = `${req.baseUrl || ''}${req.path}?folder=${encodeURIComponent(folder)}&path=${encodeURIComponent(relPath)}&type=subtitle`;
+      res.setHeader('X-Subtitle-Available', 'true');
+      res.setHeader('X-Subtitle-Path', subtitleUrl);
+    } else {
+      res.setHeader('X-Subtitle-Available', 'false');
+    }
+
     if (!range) {
       res.setHeader('Accept-Ranges', 'bytes');
       res.setHeader('Content-Type', contentType);
@@ -162,11 +198,6 @@ module.exports = () => {
 
   return router;
 };
-
-function playableInBrowser(ext) {
-  const play = ['.mp4', '.m4v', '.webm', '.ogg'];
-  return play.includes(ext);
-}
 
 function mimeTypeFor(p) {
   const ext = path.extname(p).toLowerCase();
