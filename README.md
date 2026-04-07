@@ -76,4 +76,4 @@ Guidelines
 
 Got an idea? Open an issue titled briefly (e.g., “Improve encoder performance”) — short, vague issue titles are fine. If you'd like maintainers to triage it, add the label `triage`.
 
-See AI_CONTRIBUTING.md for additional details for automated contributors.
+See CONTRIBUTING.md for additional details for automated contributors.
