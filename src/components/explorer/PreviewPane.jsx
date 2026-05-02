@@ -15,6 +15,11 @@ import {
 } from '@/api/explorerClient';
 import { fileKind } from '@/constants/fileTypes';
 import { splitStemExt, buildRenamedFilename } from '@/lib/renameParts';
+import { itemKey } from '@/context/ExplorerContext';
+import {
+  getWatchProgress,
+  recordWatchProgress
+} from '@/lib/videoWatchProgress';
 async function pollJob(jobId) {
   for (;;) {
     const j = await getJob(jobId);
@@ -110,6 +115,95 @@ export default function PreviewPane({
     if (titleEditing && titleInputRef.current) titleInputRef.current.focus();
   }, [titleEditing]);
 
+  const previewName = folder && rel ? rel.split('/').pop() || rel : '';
+  const previewKind = previewName ? fileKind(previewName) : 'other';
+  const src = folder && rel ? fileUrl(folder, rel) : '';
+
+  useEffect(() => {
+    if (!folder || !rel || previewKind !== 'video') return;
+
+    const watchKey = itemKey(folder, rel);
+    let cleaned = false;
+    let intervalId = 0;
+    let raf = 0;
+    let didResume = false;
+
+    function cleanupListeners(el) {
+      el.removeEventListener('loadedmetadata', onLoadedMeta);
+      el.removeEventListener('pause', onPause);
+      el.removeEventListener('ended', onEnded);
+    }
+
+    function onPause() {
+      const el = videoRef.current;
+      if (!el || cleaned) return;
+      recordWatchProgress(watchKey, el.currentTime, el.duration, true);
+    }
+
+    function onEnded() {
+      const el = videoRef.current;
+      if (!el || cleaned) return;
+      recordWatchProgress(watchKey, el.duration, el.duration, true);
+    }
+
+    function onLoadedMeta() {
+      const el = videoRef.current;
+      if (!el || cleaned || didResume) return;
+      const dur = el.duration;
+      if (!Number.isFinite(dur) || dur <= 0) return;
+      didResume = true;
+      const saved = getWatchProgress(watchKey);
+      if (!saved || saved.t < 0.25) return;
+      const ratio = saved.t / dur;
+      if (ratio >= 0.97) {
+        el.currentTime = 0;
+        recordWatchProgress(watchKey, 0, dur, true);
+        return;
+      }
+      el.currentTime = Math.min(saved.t, dur - 0.25);
+    }
+
+    function arm(el) {
+      if (!el || cleaned) return;
+      cleanupListeners(el);
+      didResume = false;
+      el.addEventListener('loadedmetadata', onLoadedMeta);
+      el.addEventListener('pause', onPause);
+      el.addEventListener('ended', onEnded);
+      intervalId = window.setInterval(() => {
+        const v = videoRef.current;
+        if (!v || cleaned || v.paused || v.ended) return;
+        recordWatchProgress(watchKey, v.currentTime, v.duration, false);
+      }, 15000);
+      if (el.readyState >= 1 && Number.isFinite(el.duration) && el.duration > 0) {
+        onLoadedMeta();
+      }
+    }
+
+    function tryAttach(attempts) {
+      const el = videoRef.current;
+      if (el) {
+        arm(el);
+        return;
+      }
+      if (cleaned || attempts > 40) return;
+      raf = requestAnimationFrame(() => tryAttach(attempts + 1));
+    }
+
+    tryAttach(0);
+
+    return () => {
+      cleaned = true;
+      cancelAnimationFrame(raf);
+      clearInterval(intervalId);
+      const el = videoRef.current;
+      if (el) {
+        recordWatchProgress(watchKey, el.currentTime, el.duration, true);
+        cleanupListeners(el);
+      }
+    };
+  }, [folder, rel, previewKind, src]);
+
   if (!folder || !rel) {
     return (
       <div className="flex h-full min-h-0 w-full flex-1 items-center justify-center p-4 text-sm text-muted-foreground">
@@ -118,9 +212,8 @@ export default function PreviewPane({
     );
   }
 
-  const name = rel.split('/').pop() || rel;
-  const kind = fileKind(name);
-  const src = fileUrl(folder, rel);
+  const name = previewName;
+  const kind = previewKind;
 
   function beginTitleEdit() {
     const { stem } = splitStemExt(name);
@@ -289,7 +382,13 @@ export default function PreviewPane({
   }
 
   const inner = (
-    <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-hidden">
+    <div
+      className={
+        fullscreen
+          ? 'flex min-h-0 min-w-0 flex-1 flex-col gap-2 overflow-hidden basis-0'
+          : 'flex min-h-0 flex-1 flex-col gap-2 overflow-hidden'
+      }
+    >
       <div className="flex shrink-0 flex-wrap items-center gap-x-2 gap-y-2 border-b border-border pb-2">
         <div className="min-w-0 flex-1 basis-full sm:basis-[14rem]">
           {titleEditing ? (
@@ -338,7 +437,7 @@ export default function PreviewPane({
         <div className="flex flex-wrap items-center gap-2">
           {kind === 'video' && (
             <>
-              <Button type="button" size="sm" variant="secondary" onClick={() => onShowSpliceChange(!showSplice)}>
+              <Button type="button" size="sm" variant="outline" onClick={() => onShowSpliceChange(!showSplice)}>
                 {showSplice ? 'Hide splice' : 'Splice'}
               </Button>
               <Button type="button" size="sm" variant="outline" onClick={onRemux}>
@@ -346,7 +445,7 @@ export default function PreviewPane({
               </Button>
               {!videoSnapUrl && (
                 <>
-                  <Button type="button" size="sm" variant="secondary" onClick={saveVideoFullFrame}>
+                  <Button type="button" size="sm" variant="outline" onClick={saveVideoFullFrame}>
                     Screenshot frame
                   </Button>
                   <Button type="button" size="sm" variant="outline" onClick={openVideoRegionMode}>
@@ -441,7 +540,7 @@ export default function PreviewPane({
         <div
           className={
             fullscreen && !videoSnapUrl
-              ? 'flex min-h-0 flex-1 items-center justify-center overflow-hidden rounded-md bg-black'
+              ? 'relative min-h-0 min-w-0 flex-1 overflow-hidden rounded-md bg-black'
               : fullscreen && videoSnapUrl
                 ? 'hidden'
                 : ''
@@ -455,7 +554,7 @@ export default function PreviewPane({
             crossOrigin="anonymous"
             className={
               fullscreen && !videoSnapUrl
-                ? 'max-h-full max-w-full object-contain'
+                ? 'absolute inset-0 box-border h-full w-full max-h-none max-w-none object-contain'
                 : `max-h-80 w-full rounded-md bg-black ${videoSnapUrl ? 'hidden' : ''}`
             }
             preload="metadata"
@@ -499,11 +598,19 @@ export default function PreviewPane({
     <div
       className={
         fullscreen
-          ? 'fixed inset-0 z-50 flex min-h-0 flex-col bg-background p-4'
+          ? 'fixed inset-0 z-50 flex min-h-0 min-w-0 flex-col bg-background p-4'
           : 'flex h-full min-h-0 w-full min-w-0 flex-1 flex-col overflow-hidden bg-card/30'
       }
     >
-      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">{inner}</div>
+      <div
+        className={
+          fullscreen
+            ? 'flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden basis-0'
+            : 'flex min-h-0 flex-1 flex-col overflow-hidden'
+        }
+      >
+        {inner}
+      </div>
     </div>
   );
 }

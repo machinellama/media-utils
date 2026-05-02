@@ -1,8 +1,10 @@
-import React, { useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { thumbnailUrl } from '@/api/explorerClient';
 import { itemKey } from '@/context/ExplorerContext';
+import { fileKind } from '@/constants/fileTypes';
 import { cn } from '@/lib/utils';
+import { getWatchProgress, subscribeWatchProgress } from '@/lib/videoWatchProgress';
 
 const COLS = 4;
 const ROW_H = 148;
@@ -80,6 +82,20 @@ export default function FileGrid({
 
 function FileTile({ file, rootPath, selected, previewActive, searchMode, onPick, makeExplorerDragData, thumbBust }) {
   const thumb = thumbnailUrl(rootPath, file.rel, file.mtimeMs, thumbBust);
+  const videoKey =
+    fileKind(file.name) === 'video' ? itemKey(rootPath, file.rel) : null;
+  const [, setWatchTick] = useState(0);
+  useEffect(() => {
+    if (!videoKey) return undefined;
+    return subscribeWatchProgress(() => setWatchTick(n => n + 1));
+  }, [videoKey]);
+
+  const watchProg = videoKey ? getWatchProgress(videoKey) : null;
+  const watchPct =
+    watchProg?.dur != null && watchProg.dur > 0
+      ? Math.min(100, Math.max(0, (watchProg.t / watchProg.dur) * 100))
+      : null;
+
   const sub =
     searchMode && file.subpath ? (
       <div className="truncate text-[10px] text-muted-foreground" title={file.subpath}>
@@ -109,6 +125,14 @@ function FileTile({ file, rootPath, selected, previewActive, searchMode, onPick,
       <button type="button" className="flex w-full flex-col text-left" onClick={e => onPick(e, file)}>
         <div className="relative aspect-video w-full bg-muted">
           <img src={thumb} alt="" className="h-full w-full object-cover" loading="lazy" draggable={false} />
+          {watchPct != null && (
+            <div
+              className="pointer-events-none absolute bottom-0 left-0 right-0 h-[3px] bg-foreground/15"
+              title={`Watched about ${Math.round(watchPct)}%`}
+            >
+              <div className="h-full bg-primary/85" style={{ width: `${watchPct}%` }} />
+            </div>
+          )}
         </div>
         <div className="truncate px-1 py-0.5 font-medium" title={file.name}>
           {file.name}
