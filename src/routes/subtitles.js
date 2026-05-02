@@ -5,8 +5,6 @@ const path = require('path');
 const zlib = require('zlib');
 const fetch = global.fetch || require('node-fetch'); // ensure fetch exists in Node
 
-require('dotenv').config();
-
 const APP_NAME = 'MySubtitleApp';
 const APP_VERSION = '1.0';
 const USER_AGENT = `${APP_NAME} v${APP_VERSION}`;

@@ -1,13 +1,14 @@
 const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
+const { getFfmpegPath, getFfprobePath } = require('../lib/server/ffmpegPath');
 
 async function needsRemuxToMp4(inputPath) {
   try {
     const ext = path.extname(inputPath || '').toLowerCase();
     if (ext === '.wmv' || ext === '.ts' || ext === '.m2ts') return true;
     const out = await new Promise((resolve, reject) => {
-      const p = spawn('ffprobe', [
+      const p = spawn(getFfprobePath(), [
         '-v', 'error',
         '-show_entries', 'format=format_name',
         '-of', 'default=noprint_wrappers=1:nokey=1',
@@ -35,9 +36,21 @@ async function needsRemuxToMp4(inputPath) {
 
 async function runFFmpeg(args) {
   return new Promise((resolve, reject) => {
-    const ff = spawn('ffmpeg', args);
+    const bin = getFfmpegPath();
+    const ff = spawn(bin, args);
     let stderr = '';
     ff.stderr.on('data', d => stderr += d.toString());
+    ff.on('error', err => {
+      if (err && err.code === 'ENOENT') {
+        reject(
+          new Error(
+            `ffmpeg not found (tried "${bin}"). Install ffmpeg or set FFMPEG_PATH in .env to the full path.`
+          )
+        );
+        return;
+      }
+      reject(err);
+    });
     ff.on('close', code => {
       if (code === 0) resolve({ stderr });
       else reject(new Error('ffmpeg failed: ' + code + '\n' + stderr));
@@ -74,7 +87,7 @@ async function runCmd(cmd, args) {
 async function probeVideoDimensions(inputPath) {
   try {
     const out = await new Promise((resolve, reject) => {
-      const p = spawn('ffprobe', [
+      const p = spawn(getFfprobePath(), [
         '-v', 'error',
         '-select_streams', 'v:0',
         '-show_entries', 'stream=width,height',

@@ -6,7 +6,9 @@ const os = require('os');
 const { spawn } = require('child_process');
 const { rm } = fs.promises;
 
-const VIDEO_EXTS = ['.mp4', '.m4v', '.mov', '.mkv', '.webm', '.avi', '.ts', '.mts', '.m2ts'];
+const extensions = require('../constants/extensions.json');
+const VIDEO_EXTS = extensions.VIDEO_EXTS;
+const { getFfmpegPath } = require('../lib/server/ffmpegPath');
 
 module.exports = () => {
   const router = express.Router();
@@ -209,7 +211,7 @@ function mimeTypeFor(p) {
 
 function runFFmpeg(args) {
   return new Promise((resolve, reject) => {
-    const ff = spawn('ffmpeg', args);
+    const ff = spawn(getFfmpegPath(), args);
     let stderr = '';
     ff.stderr.on('data', d => stderr += d.toString());
     ff.on('close', code => { if (code === 0) resolve(); else reject(new Error('ffmpeg failed: ' + code + '\n' + stderr)); });

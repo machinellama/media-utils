@@ -6,6 +6,8 @@ const sharp = require('sharp');
 
 const IMG_EXTS = ['.jpg', '.jpeg', '.png', '.webp', '.gif', '.avif'];
 
+const SEND_DOTFILES_ALLOW = { dotfiles: 'allow' };
+
 module.exports = () => {
   const router = express.Router();
 
@@ -52,7 +54,7 @@ module.exports = () => {
     const { folder, file } = req.query;
     const absPath = path.join(path.resolve(folder), file);
     if (!fs.existsSync(absPath)) return res.status(404).end();
-    res.sendFile(absPath);
+    res.sendFile(absPath, SEND_DOTFILES_ALLOW);
   });
 
   router.get('/thumbnail', async (req, res) => {
@@ -69,7 +71,7 @@ module.exports = () => {
       res.set({ 'Content-Type': 'image/jpeg', 'Cache-Control': 'public, max-age=3600' });
       res.send(thumb);
     } catch (e) {
-      res.sendFile(absPath);
+      res.sendFile(absPath, SEND_DOTFILES_ALLOW);
     }
   });
 

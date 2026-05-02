@@ -5,6 +5,7 @@ const path = require('path');
 const os = require('os');
 const { rm } = fs.promises;
 const { spawn } = require('child_process');
+const { getFfmpegPath } = require('../lib/server/ffmpegPath');
 
 module.exports = (upload) => {
   const router = express.Router();
@@ -73,7 +74,7 @@ module.exports = (upload) => {
 
 function runFFmpeg(args) {
   return new Promise((resolve, reject) => {
-    const ff = spawn('ffmpeg', args);
+    const ff = spawn(getFfmpegPath(), args);
     let stderr = '';
     ff.stderr.on('data', d => stderr += d.toString());
     ff.on('close', code => {

@@ -1,8 +1,9 @@
-// src/SplicePage.jsx
 import React, { useRef, useState, useEffect } from 'react';
-import { NumberInput, TextInput, Button } from 'finallyreact';
-
-import './splice.css';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { apiFetch } from '@/lib/api';
+import { cn } from '@/lib/utils';
 
 function fmt(t) {
   if (!isFinite(t)) return '—';
@@ -26,23 +27,26 @@ export default function SplicePage(props) {
   const [status, setStatus] = useState('');
   const [sourceUrl, setSourceUrl] = useState(null);
   const [remuxing, setRemuxing] = useState(false);
-
-  // New state for rotate, filename, save folder
   const [rotateDeg, setRotateDeg] = useState(0);
   const [outputFilename, setOutputFilename] = useState('');
-  const [saveFolder, setSaveFolder] = useState(''); // server-side path to save result (optional)
-
   const [deleting, setDeleting] = useState(false);
+
+  const hidePicker = !!props.hideFilePicker;
+  const drivesFromPreview = props.variant === 'panel' && props.previewVideoRef;
+
+  function getVideoEl() {
+    if (drivesFromPreview && props.previewVideoRef?.current) return props.previewVideoRef.current;
+    return videoRef.current;
+  }
 
   async function deleteFile() {
     setDeleting(true);
     setStatus('Deleting...');
-    console.log({ props });
     try {
-      const resp = await fetch('http://localhost:3001/watch/delete', {
+      const resp = await apiFetch('/watch/delete', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ folder: props.selectedRootPath, path: props.selectedVideoName }),
+        body: JSON.stringify({ folder: props.selectedRootPath, path: props.selectedVideoName })
       });
       const j = await resp.json().catch(() => ({}));
       if (!resp.ok || j.error) {
@@ -50,17 +54,13 @@ export default function SplicePage(props) {
         setDeleting(false);
         return;
       }
-
-      // on success clear UI
       setFileBlob(null);
       setSourceUrl(null);
       setOutputFilename('');
-      setSaveFolder('');
       resetStateOnNewFile();
       setStatus('Deleted');
       setDeleting(false);
     } catch (err) {
-      console.error('[delete] failed', err);
       setStatus('Delete failed');
       setDeleting(false);
     }
@@ -69,19 +69,23 @@ export default function SplicePage(props) {
   async function processFileURL(url, f) {
     try {
       setSourceUrl(url);
-
       if (!f) {
         const resp = await fetch(url);
         const blob = await resp.blob();
         const file = new File([blob], props.selectedVideoName || 'name.mp4', { type: blob.type });
         f = file;
       }
-
       f && setFileBlob(f);
       const v = videoRef.current;
       let metadataLoaded = false;
-      const onLoaded = () => { metadataLoaded = true; cleanup(); };
-      const onErr = () => { cleanup(); attemptRemux(); };
+      const onLoaded = () => {
+        metadataLoaded = true;
+        cleanup();
+      };
+      const onErr = () => {
+        cleanup();
+        attemptRemux();
+      };
       const cleanup = () => {
         if (!v) return;
         v.removeEventListener('loadedmetadata', onLoaded);
@@ -89,71 +93,108 @@ export default function SplicePage(props) {
       };
       const attemptRemux = async () => {
         if (!f) return;
-        // If browser couldn't load playable source, call server remux.
-        console.info('[file] attempting remux because browser cannot play file locally');
         const remuxedBlob = await remuxFileToMp4(f);
         if (remuxedBlob) {
           const remuxUrl = URL.createObjectURL(remuxedBlob);
-          // replace source and fileBlob with remuxed MP4 so UI works naturally
           setSourceUrl(remuxUrl);
           const newName = (f.name || 'video').replace(/\.[^/.]+$/, '') + '.mp4';
           const newFile = new File([remuxedBlob], newName, { type: 'video/mp4' });
           setFileBlob(newFile);
         } else {
-          // keep original and disable export until user manually remuxes
           setFileBlob(f);
         }
       };
 
-      // Give the video a moment to try loading metadata:
       if (v) {
         v.pause();
         v.src = url;
         v.load();
         v.addEventListener('loadedmetadata', onLoaded, { once: true });
         v.addEventListener('error', onErr, { once: true });
-        // If neither event fires within 1s, assume loadedmetadata succeeded or browser accepted it.
         setTimeout(() => {
           if (!metadataLoaded) cleanup();
         }, 1000);
       }
     } catch (err) {
-      console.error('[file] createObjectURL failed', err);
       setStatus('Failed to load file locally');
       setSourceUrl(null);
       setFileBlob(null);
     }
   }
 
+  /** Fetch file for server export; preview player stays the only decoder when `drivesFromPreview`. */
   useEffect(() => {
+    if (!props.selectedVideoURL || !drivesFromPreview) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const resp = await fetch(props.selectedVideoURL);
+        const blob = await resp.blob();
+        if (cancelled) return;
+        const file = new File([blob], props.selectedVideoName || 'video.mp4', { type: blob.type });
+        setFileBlob(file);
+      } catch {
+        if (!cancelled) setStatus('Failed to load file for export');
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [props.selectedVideoURL, props.selectedVideoName, drivesFromPreview]);
+
+  useEffect(() => {
+    if (!props.selectedVideoURL || drivesFromPreview) return;
+
     const v = videoRef.current;
     if (!v) return;
-
-    if (props.selectedVideoURL) {
-      processFileURL(props.selectedVideoURL);
-    }
-
+    processFileURL(props.selectedVideoURL);
     const onTime = () => setCurrentTime(v.currentTime);
     const onLoaded = () => setDuration(v.duration || NaN);
-    const onError = () => {
-      const err = v.error;
-      if (err) {
-        console.error('[video] media error:', { code: err.code, message: err.message || null, mediaErrorObj: err });
-      } else {
-        console.error('[video] video element reported error event with no MediaError');
-      }
-    };
-
     v.addEventListener('timeupdate', onTime);
     v.addEventListener('loadedmetadata', onLoaded);
-    v.addEventListener('error', onError);
-
     return () => {
       v.removeEventListener('timeupdate', onTime);
       v.removeEventListener('loadedmetadata', onLoaded);
-      v.removeEventListener('error', onError);
     };
-  }, []);
+  }, [props.selectedVideoURL, drivesFromPreview]);
+
+  useEffect(() => {
+    if (!drivesFromPreview || !props.selectedVideoURL || !props.previewVideoRef) return;
+
+    let cancelled = false;
+    let detach;
+    let rafId = 0;
+
+    function bind(el) {
+      if (!el) return undefined;
+      const onTime = () => setCurrentTime(el.currentTime);
+      const onDur = () => setDuration(el.duration || NaN);
+      el.addEventListener('timeupdate', onTime);
+      el.addEventListener('loadedmetadata', onDur);
+      setCurrentTime(el.currentTime);
+      if (el.readyState >= 1) setDuration(el.duration || NaN);
+      return () => {
+        el.removeEventListener('timeupdate', onTime);
+        el.removeEventListener('loadedmetadata', onDur);
+      };
+    }
+
+    function tryAttach(attempt) {
+      if (cancelled) return;
+      detach = bind(props.previewVideoRef.current);
+      if (!detach && attempt < 15) {
+        rafId = requestAnimationFrame(() => tryAttach(attempt + 1));
+      }
+    }
+
+    tryAttach(0);
+
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(rafId);
+      detach?.();
+    };
+  }, [props.selectedVideoURL, drivesFromPreview, props.previewVideoRef]);
 
   function resetStateOnNewFile() {
     setRanges([]);
@@ -165,7 +206,6 @@ export default function SplicePage(props) {
     setCurrentTime(0);
     setRotateDeg(0);
     setOutputFilename('');
-    setSaveFolder('');
   }
 
   async function remuxFileToMp4(file) {
@@ -176,9 +216,9 @@ export default function SplicePage(props) {
       const form = new FormData();
       form.append('file', file, file.name);
       form.append('remuxOnly', '1');
-      const resp = await fetch('http://localhost:3001/splice?remuxOnly=1', {
+      const resp = await apiFetch('/splice?remuxOnly=1', {
         method: 'POST',
-        body: form,
+        body: form
       });
       if (!resp.ok) {
         const err = await resp.json().catch(() => ({ error: 'server error' }));
@@ -187,8 +227,6 @@ export default function SplicePage(props) {
         setRemuxing(false);
         return null;
       }
-
-      // Stream response -> blob with progress if length present
       const reader = resp.body.getReader();
       const contentLength = resp.headers.get('Content-Length');
       let received = 0;
@@ -198,7 +236,7 @@ export default function SplicePage(props) {
         if (done) break;
         chunks.push(value);
         received += value.length;
-        if (contentLength) setProgress(0.02 + 0.6 * (received / contentLength));
+        if (contentLength) setProgress(0.02 + 0.6 * (received / Number(contentLength)));
       }
       const out = new Blob(chunks, { type: 'video/mp4' });
       setProgress(1);
@@ -207,7 +245,6 @@ export default function SplicePage(props) {
       setRemuxing(false);
       return out;
     } catch (err) {
-      console.error('[remux] failed', err);
       setStatus('Remux failed');
       setProgress(0);
       setRemuxing(false);
@@ -215,28 +252,27 @@ export default function SplicePage(props) {
     }
   }
 
-  async function onFile(e) {
+  function onFile(e) {
     const f = e.target.files && e.target.files[0];
-    console.debug('[file] input change', { fileProvided: !!f });
     if (!f) {
       setFileBlob(null);
       setSourceUrl(null);
       resetStateOnNewFile();
       return;
     }
-    console.info('[file] selected', { name: f.name, size: f.size, type: f.type });
     resetStateOnNewFile();
-
     const url = URL.createObjectURL(f);
     processFileURL(url, f);
   }
 
   function setStart() {
-    const t = videoRef.current && videoRef.current.currentTime;
+    const v = getVideoEl();
+    const t = v && v.currentTime;
     setCurrentStart(t);
   }
   function setEnd() {
-    const t = videoRef.current && videoRef.current.currentTime;
+    const v = getVideoEl();
+    const t = v && v.currentTime;
     setCurrentEnd(t);
   }
   function addRange() {
@@ -247,7 +283,9 @@ export default function SplicePage(props) {
     setCurrentStart(null);
     setCurrentEnd(null);
   }
-  function removeRange(i) { setRanges(prev => prev.filter((_, idx) => idx !== i)); }
+  function removeRange(i) {
+    setRanges(prev => prev.filter((_, idx) => idx !== i));
+  }
 
   async function exportRanges() {
     if (!fileBlob || ranges.length === 0) return;
@@ -257,23 +295,16 @@ export default function SplicePage(props) {
       const form = new FormData();
       form.append('file', fileBlob, fileBlob.name);
       form.append('ranges', JSON.stringify(ranges));
-      // append new params: rotate (degrees) and output filename if provided
       const rot = Number(rotateDeg) || 0;
       form.append('rotate', String(rot));
       if (outputFilename && outputFilename.trim() !== '') {
         let name = outputFilename.trim();
-        if (!/\.[^/.]+$/.test(name)) name = name + '.mp4';
+        if (!/\.[^/.]+$/.test(name)) name = `${name}.mp4`;
         form.append('outputFilename', name);
       }
-
-      if (saveFolder && saveFolder.trim() !== '') {
-        form.append('saveFolder', saveFolder.trim());
-      }
-
-      // send to server splice endpoint which will remux if needed and perform cut/concat/rotate
-      const resp = await fetch('http://localhost:3001/splice', {
+      const resp = await apiFetch('/splice', {
         method: 'POST',
-        body: form,
+        body: form
       });
       if (!resp.ok) {
         const err = await resp.json().catch(() => ({ error: 'server error' }));
@@ -291,17 +322,21 @@ export default function SplicePage(props) {
         if (done) break;
         chunks.push(value);
         received += value.length;
-        if (contentLength) setProgress(0.1 + 0.8 * (received / contentLength));
+        if (contentLength) setProgress(0.1 + 0.8 * (received / Number(contentLength)));
       }
       const out = new Blob(chunks, { type: 'video/mp4' });
       const defaultName = (fileBlob.name || 'video').replace(/\.[^/.]+$/, '') + '_spliced.mp4';
-      const downloadName = (outputFilename && outputFilename.trim() !== '') ? (/\.[^/.]+$/.test(outputFilename.trim()) ? outputFilename.trim() : outputFilename.trim() + '.mp4') : defaultName;
+      const downloadName =
+        outputFilename && outputFilename.trim() !== ''
+          ? /\.[^/.]+$/.test(outputFilename.trim())
+            ? outputFilename.trim()
+            : `${outputFilename.trim()}.mp4`
+          : defaultName;
       downloadBlob(out, downloadName);
       setProgress(1);
       setStatus('Done');
       setTimeout(() => setProgress(0), 600);
     } catch (err) {
-      console.error(err);
       setStatus('Upload or processing failed');
       setProgress(0);
     }
@@ -318,144 +353,145 @@ export default function SplicePage(props) {
     setTimeout(() => URL.revokeObjectURL(url), 60000);
   }
 
+  const panel = props.variant === 'panel';
+
   return (
-    <div className="container cloud-3">
-      <div className="left-col">
-        <label className="filelabel">
-          <input ref={fileRef} type="file" accept="video/*" onChange={onFile} />
-          <span>{fileBlob ? fileBlob.name : 'Select video to splice'}</span>
+    <div
+      className={cn(
+        'flex flex-col gap-3 text-sm',
+        panel && 'min-h-0',
+        props.className
+      )}
+    >
+      {!hidePicker && (
+        <label className="flex cursor-pointer flex-col gap-1">
+          <span className="text-muted-foreground">Local file</span>
+          <input ref={fileRef} type="file" accept="video/*" onChange={onFile} className="text-xs" />
         </label>
-        <div className="player-wrap">
-          <video ref={videoRef} controls crossOrigin="anonymous" src={sourceUrl} style={{ maxWidth: '100%' }}></video>
+      )}
+      {!drivesFromPreview && (
+        <div className="overflow-hidden rounded-md border border-border bg-muted/30">
+          <video
+            ref={videoRef}
+            controls
+            crossOrigin="anonymous"
+            src={sourceUrl || undefined}
+            className={cn('w-full', panel ? 'max-h-[min(52vh,520px)] min-h-[140px]' : 'max-h-64')}
+          />
         </div>
-        <div className="times">
-          <div className="time-item">
-            <label>Current</label>
-            <div>{fmt(currentTime)}</div>
-          </div>
-          <div className="time-item">
-            <label>Start</label>
-            <div>{currentStart == null ? '—' : fmt(currentStart)}</div>
-          </div>
-          <div className="time-item">
-            <label>End</label>
-            <div>{currentEnd == null ? '—' : fmt(currentEnd)}</div>
-          </div>
-          <div className="flex justify-between w-full">
-            <div>
-              <Button
-                onClick={setStart}
-                disabled={!fileBlob}
-                text="Set Start"
-                size="sm"
-                color="stone-10"
-                className="cloud-3 mr-1/2"
-              />
-              <Button
-                onClick={setEnd}
-                disabled={!fileBlob}
-                text="Set End"
-                size="sm"
-                color="stone-10"
-                className="cloud-3 mr-1/2"
-              />
-            </div>
-
-            <Button
-              onClick={deleteFile}
-              disabled={!fileBlob || deleting}
-              className="output-name cloud-3 mx-1/2"
-              text={deleting ? 'Deleting...' : 'Delete'}
-              size="sm"
-              color="stone-10"
-            />
-          </div>
+      )}
+      {drivesFromPreview && (
+        <p className="text-xs leading-snug text-muted-foreground">
+          Use the preview player to scrub; Start / End use its timeline position.
+        </p>
+      )}
+      <div className="grid grid-cols-3 gap-2 text-xs">
+        <div>
+          <Label>Current</Label>
+          <div className="font-mono">{fmt(currentTime)}</div>
         </div>
-
-        <div className="btns">
-          <button onClick={addRange} disabled={!fileBlob || currentStart == null || currentEnd == null}>Add Range</button>
-          <button onClick={() => { setRanges([]); }}>Clear</button>
-
-          {/* Inputs for rotate, filename, save folder */}
-          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', marginLeft: '8px', flexWrap: 'wrap' }}>
-            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }} className="output-name">
-              <span style={{ fontSize: '12px' }}>Rotate°</span>
-              <NumberInput
-                min="0"
-                max="360"
-                value={rotateDeg}
-                className="output-name"
-                size="sm"
-                color="stone-10"
-                onChange={(e) => {
-                  let v = Number(e.target.value);
-                  if (!isFinite(v)) v = 0;
-                  v = ((v % 360) + 360) % 360;
-                  setRotateDeg(v);
-                }}
-                disabled={!fileBlob}
-                inputProps={{
-                  className: 'stone-10-bg cloud-3 w-fit'
-                }}
-              />
-            </div>
-
-            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }} className="output-name">
-              <span style={{ fontSize: '12px' }}>Filename</span>
-              <TextInput
-                placeholder="output name"
-                value={outputFilename}
-                onChange={(e) => setOutputFilename(e.target.value)}
-                className="output-name"
-                disabled={!fileBlob}
-                inputProps={{
-                  className: 'stone-10-bg cloud-3 w-fit'
-                }}
-                size="sm"
-                color="stone-10"
-              />
-            </div>
-
-            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }} className="output-name">
-              <span style={{ fontSize: '12px' }}>Save Folder</span>
-              <TextInput
-                placeholder="/absolute/path"
-                value={saveFolder}
-                onChange={(e) => setSaveFolder(e.target.value)}
-                className="output-name"
-                disabled={!fileBlob}
-                inputProps={{
-                  className: 'stone-10-bg cloud-3 w-fit'
-                }}
-                size="sm"
-                color="stone-10"
-              />
-            </div>
-          </div>
-
-          <button onClick={exportRanges} disabled={!fileBlob || ranges.length === 0 || remuxing}>Export Selected (server)</button>
+        <div>
+          <Label>Start</Label>
+          <div className="font-mono">{currentStart == null ? '—' : fmt(currentStart)}</div>
+        </div>
+        <div>
+          <Label>End</Label>
+          <div className="font-mono">{currentEnd == null ? '—' : fmt(currentEnd)}</div>
         </div>
       </div>
-      <aside className="right-col">
-        <div className="ranges">
-          <h2>Ranges</h2>
-          <ul id="rangesList">
-            {ranges.map((r, i) => (
-              <li key={i}>
-                <div className="range-time">{fmt(r.start)} → {fmt(r.end)}</div>
-                <div className="range-actions">
-                  <button onClick={() => { videoRef.current.currentTime = r.start; videoRef.current.play(); }}>▶</button>
-                  <button onClick={() => removeRange(i)}>✖</button>
-                </div>
-              </li>
-            ))}
-          </ul>
+      <div className="flex flex-wrap gap-2">
+        <Button type="button" size="sm" variant="secondary" onClick={setStart} disabled={!getVideoEl()}>
+          Set Start
+        </Button>
+        <Button type="button" size="sm" variant="secondary" onClick={setEnd} disabled={!getVideoEl()}>
+          Set End
+        </Button>
+        <Button type="button" size="sm" variant="destructive" onClick={deleteFile} disabled={!fileBlob || deleting || !props.selectedRootPath}>
+          {deleting ? 'Deleting…' : 'Delete'}
+        </Button>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          onClick={addRange}
+          disabled={currentStart == null || currentEnd == null}
+        >
+          Add Range
+        </Button>
+        <Button type="button" size="sm" variant="outline" onClick={() => setRanges([])}>
+          Clear ranges
+        </Button>
+      </div>
+      <div className="flex flex-wrap items-end gap-3">
+        <div className="space-y-1">
+          <Label>Rotate°</Label>
+          <Input
+            type="number"
+            min={0}
+            max={360}
+            className="h-8 w-20"
+            value={rotateDeg}
+            disabled={!fileBlob}
+            onChange={e => {
+              let v = Number(e.target.value);
+              if (!isFinite(v)) v = 0;
+              v = ((v % 360) + 360) % 360;
+              setRotateDeg(v);
+            }}
+          />
         </div>
-        <div className="progress-row">
-          <label>{status || 'Export progress'}</label>
-          <progress value={progress} max="1"></progress>
+        <div className="space-y-1">
+          <Label>Filename</Label>
+          <Input
+            placeholder="output name"
+            value={outputFilename}
+            disabled={!fileBlob}
+            onChange={e => setOutputFilename(e.target.value)}
+            className="h-8 max-w-xs"
+          />
         </div>
-      </aside>
+      </div>
+      <Button type="button" onClick={exportRanges} disabled={!fileBlob || ranges.length === 0 || remuxing}>
+        Export selected (server)
+      </Button>
+      <div className="rounded-md border border-border p-2">
+        <div className="mb-1 text-xs font-medium">Ranges</div>
+        <ul className={cn('space-y-1 overflow-auto text-xs', panel ? 'max-h-56' : 'max-h-32')}>
+          {ranges.map((r, i) => (
+            <li key={i} className="flex items-center justify-between gap-2">
+              <span className="font-mono">
+                {fmt(r.start)} → {fmt(r.end)}
+              </span>
+              <span className="flex gap-1">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  className="h-7 px-2"
+                  onClick={() => {
+                    const el = getVideoEl();
+                    if (el) {
+                      el.currentTime = r.start;
+                      el.play();
+                    }
+                  }}
+                >
+                  Play
+                </Button>
+                <Button type="button" size="sm" variant="ghost" className="h-7 px-2" onClick={() => removeRange(i)}>
+                  Remove
+                </Button>
+              </span>
+            </li>
+          ))}
+        </ul>
+      </div>
+      <div className="space-y-1">
+        <Label className="text-xs">{status || 'Progress'}</Label>
+        <progress value={progress} max={1} className="h-2 w-full" />
+      </div>
     </div>
   );
 }

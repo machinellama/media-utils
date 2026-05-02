@@ -1,0 +1,120 @@
+import React, { useRef } from 'react';
+import { useVirtualizer } from '@tanstack/react-virtual';
+import { thumbnailUrl } from '@/api/explorerClient';
+import { itemKey } from '@/context/ExplorerContext';
+import { cn } from '@/lib/utils';
+
+const COLS = 4;
+const ROW_H = 148;
+
+export default function FileGrid({
+  rootPath,
+  files,
+  selectedKeys,
+  preview,
+  onPickFile,
+  searchMode,
+  makeExplorerDragData,
+  thumbBust
+}) {
+  const parentRef = useRef(null);
+  const rowCount = Math.ceil(files.length / COLS) || 0;
+
+  const virtualizer = useVirtualizer({
+    count: rowCount,
+    getScrollElement: () => parentRef.current,
+    estimateSize: () => ROW_H,
+    overscan: 6
+  });
+
+  if (files.length === 0) {
+    return (
+      <div className="flex flex-1 items-center justify-center p-8 text-sm text-muted-foreground">
+        No matching files. Enter a folder path or adjust search.
+      </div>
+    );
+  }
+
+  const renderTile = f => (
+    <FileTile
+      key={f.rel}
+      file={f}
+      rootPath={rootPath}
+      selected={selectedKeys.includes(itemKey(rootPath, f.rel))}
+      previewActive={preview && preview.root === rootPath && preview.rel === f.rel}
+      searchMode={searchMode}
+      onPick={onPickFile}
+      makeExplorerDragData={makeExplorerDragData}
+      thumbBust={thumbBust}
+    />
+  );
+
+  if (files.length < 120) {
+    return <div className="grid grid-cols-2 gap-2 p-2 sm:grid-cols-3 lg:grid-cols-4">{files.map(f => renderTile(f))}</div>;
+  }
+
+  return (
+    <div ref={parentRef} className="h-full min-h-[200px] overflow-auto p-2">
+      <div className="relative" style={{ height: `${virtualizer.getTotalSize()}px` }}>
+        {virtualizer.getVirtualItems().map(vRow => {
+          const rowIndex = vRow.index;
+          const start = rowIndex * COLS;
+          const rowFiles = files.slice(start, start + COLS);
+          return (
+            <div
+              key={vRow.key}
+              className="absolute left-0 top-0 grid w-full grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4"
+              style={{
+                transform: `translateY(${vRow.start}px)`,
+                height: ROW_H
+              }}
+            >
+              {rowFiles.map(f => renderTile(f))}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function FileTile({ file, rootPath, selected, previewActive, searchMode, onPick, makeExplorerDragData, thumbBust }) {
+  const thumb = thumbnailUrl(rootPath, file.rel, file.mtimeMs, thumbBust);
+  const sub =
+    searchMode && file.subpath ? (
+      <div className="truncate text-[10px] text-muted-foreground" title={file.subpath}>
+        {file.subpath}
+      </div>
+    ) : null;
+
+  const canDrag = Boolean(makeExplorerDragData && rootPath);
+
+  return (
+    <div
+      className={cn(
+        'overflow-hidden rounded-md border border-border bg-card text-left text-xs transition-colors hover:bg-accent/40',
+        selected && 'ring-2 ring-primary',
+        previewActive && 'border-primary',
+        canDrag && 'cursor-grab active:cursor-grabbing'
+      )}
+      draggable={canDrag}
+      onDragStart={e => {
+        if (!makeExplorerDragData || !rootPath) return;
+        const payload = makeExplorerDragData(file);
+        if (!payload) return;
+        e.dataTransfer.setData('application/json', payload);
+        e.dataTransfer.effectAllowed = 'move';
+      }}
+    >
+      <button type="button" className="flex w-full flex-col text-left" onClick={e => onPick(e, file)}>
+        <div className="relative aspect-video w-full bg-muted">
+          <img src={thumb} alt="" className="h-full w-full object-cover" loading="lazy" draggable={false} />
+        </div>
+        <div className="truncate px-1 py-0.5 font-medium" title={file.name}>
+          {file.name}
+        </div>
+        {sub}
+      </button>
+    </div>
+  );
+}
