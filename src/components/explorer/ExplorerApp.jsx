@@ -116,11 +116,13 @@ export default function ExplorerApp() {
   const [combineOpen, setCombineOpen] = useState(false);
   const [combineName, setCombineName] = useState('combined.mp4');
   const [folderPickHint, setFolderPickHint] = useState('');
+  const [folderPathDraft, setFolderPathDraft] = useState('');
   const [folderActionMsg, setFolderActionMsg] = useState('');
   const [mkdirOpen, setMkdirOpen] = useState(false);
   const [mkdirName, setMkdirName] = useState('');
   const [dropOverFolder, setDropOverFolder] = useState(null);
   const [thumbBust, setThumbBust] = useState(() => Date.now());
+  const [sidebarFolderFilter, setSidebarFolderFilter] = useState('');
 
   const searchDebounced = useDebouncedValue(activeTab?.searchQuery ?? '', 280);
   const rootPath = activeTab?.rootPath?.trim() || '';
@@ -128,6 +130,24 @@ export default function ExplorerApp() {
   useEffect(() => {
     setFolderActionMsg('');
   }, [rootPath]);
+
+  useEffect(() => {
+    setSidebarFolderFilter('');
+  }, [rootPath]);
+
+  useEffect(() => {
+    setFolderPathDraft(activeTab?.rootPath ?? '');
+  }, [activeTabId, activeTab?.rootPath]);
+
+  function commitFolderPathFromDraft() {
+    const trimmed = folderPathDraft.trim();
+    const current = (activeTab?.rootPath ?? '').trim();
+    if (trimmed !== current) {
+      updateTab(activeTabId, { rootPath: trimmed });
+    } else {
+      setFolderPathDraft(activeTab?.rootPath ?? '');
+    }
+  }
 
   const filesQuery = useQuery({
     queryKey: ['explorer-files', rootPath, searchDebounced, activeTab?.sort, activeTab?.sortDir],
@@ -335,6 +355,11 @@ export default function ExplorerApp() {
   const audioSel = selectedParsed.filter(i => fileKind(i.rel.split('/').pop() || '') === 'audio');
 
   const subfolders = subfoldersQuery.data?.dirs ?? [];
+  const filteredSubfolders = useMemo(() => {
+    const q = sidebarFolderFilter.trim().toLowerCase();
+    if (!q) return subfolders;
+    return subfolders.filter(d => d.toLowerCase().includes(q));
+  }, [subfolders, sidebarFolderFilter]);
   const canGoUp = canGoUpDirectory(rootPath);
 
   const makeExplorerDragData = useCallback(
@@ -490,10 +515,27 @@ export default function ExplorerApp() {
             <Input
               aria-label="Folder path"
               className="pr-10 font-mono text-xs"
-              value={activeTab?.rootPath ?? ''}
+              value={folderPathDraft}
               onChange={e => {
+                setFolderPathDraft(e.target.value);
                 setFolderPickHint('');
-                updateTab(activeTabId, { rootPath: e.target.value });
+              }}
+              onPaste={e => {
+                const el = e.currentTarget;
+                window.setTimeout(() => {
+                  const v = el.value;
+                  setFolderPathDraft(v);
+                  setFolderPickHint('');
+                  updateTab(activeTabId, { rootPath: v.trim() });
+                }, 0);
+              }}
+              onBlur={commitFolderPathFromDraft}
+              onKeyDown={e => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  commitFolderPathFromDraft();
+                  e.currentTarget.blur();
+                }
               }}
               placeholder="/absolute/path/to/folder"
             />
@@ -552,15 +594,23 @@ export default function ExplorerApp() {
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col gap-2 lg:flex-row lg:gap-0">
-        <aside className="flex min-h-0 w-full shrink-0 flex-col gap-2 border-border lg:w-[260px] lg:border-r lg:pr-2">
-          <div className="space-y-2">
-            <div className="flex items-center justify-between gap-1">
+        <aside className="flex w-full min-h-[14rem] flex-1 flex-col gap-2 border-border min-h-0 lg:h-full lg:min-h-0 lg:w-[260px] lg:flex-none lg:border-r lg:pr-2">
+          <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-hidden">
+            <div className="flex shrink-0 flex-wrap items-center gap-1.5">
               <div className="text-xs font-medium text-muted-foreground">Folders</div>
+              <Input
+                aria-label="Filter subfolders"
+                className="h-8 min-w-[80px] flex-1 font-mono text-xs"
+                value={sidebarFolderFilter}
+                onChange={e => setSidebarFolderFilter(e.target.value)}
+                placeholder="Filter…"
+                disabled={!rootPath}
+              />
               <Button
                 type="button"
                 size="sm"
                 variant="ghost"
-                className="h-7 gap-1 px-2 text-xs"
+                className="h-8 shrink-0 gap-1 px-2 text-xs"
                 disabled={!rootPath}
                 title="New folder here"
                 onClick={() => {
@@ -573,24 +623,27 @@ export default function ExplorerApp() {
                 New
               </Button>
             </div>
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              className="w-full justify-start gap-1 font-normal"
-              disabled={!canGoUp}
-              onClick={goToParentFolder}
-            >
-              <ChevronUp className="h-4 w-4 shrink-0" />
-              Parent folder
-            </Button>
-            <div
-              className="truncate rounded-md border border-border bg-muted/30 px-2 py-1.5 font-mono text-[10px] leading-tight text-muted-foreground"
-              title={rootPath || undefined}
-            >
-              {rootPath || 'Set a folder path'}
+            <div className="flex min-h-0 shrink-0 items-center gap-1 rounded-md border border-border bg-muted/30 px-1 py-1">
+              <Button
+                type="button"
+                size="icon"
+                variant="ghost"
+                className="h-7 w-7 shrink-0 text-muted-foreground"
+                disabled={!canGoUp}
+                onClick={goToParentFolder}
+                aria-label="Parent folder"
+                title="Parent folder"
+              >
+                <ChevronUp className="h-4 w-4" />
+              </Button>
+              <div
+                className="min-w-0 flex-1 truncate font-mono text-[10px] leading-tight text-muted-foreground"
+                title={rootPath || undefined}
+              >
+                {rootPath || 'Set a folder path'}
+              </div>
             </div>
-            <ScrollArea className="h-48 rounded-md border border-border">
+            <ScrollArea className="min-h-0 flex-1 rounded-md border border-border">
               <div
                 className="space-y-0.5 p-2"
                 onDragOver={e => {
@@ -612,7 +665,14 @@ export default function ExplorerApp() {
                   !subfoldersQuery.isError && (
                     <div className="text-xs text-muted-foreground">No subfolders</div>
                   )}
-                {subfolders.map(d => (
+                {rootPath &&
+                  !subfoldersQuery.isFetching &&
+                  subfolders.length > 0 &&
+                  filteredSubfolders.length === 0 &&
+                  !subfoldersQuery.isError && (
+                    <div className="text-xs text-muted-foreground">No folders match filter</div>
+                  )}
+                {filteredSubfolders.map(d => (
                   <div
                     key={d}
                     className={cn(
@@ -645,34 +705,36 @@ export default function ExplorerApp() {
               </div>
             </ScrollArea>
             {folderActionMsg && (
-              <p className="text-xs text-amber-600 dark:text-amber-400">{folderActionMsg}</p>
+              <p className="shrink-0 text-xs text-amber-600 dark:text-amber-400">{folderActionMsg}</p>
             )}
           </div>
-          <Separator />
-          <div className="text-xs font-medium text-muted-foreground">Favorites</div>
-          <ScrollArea className="h-40 rounded-md border border-border">
-            <div className="space-y-1 p-2">
-              {favorites.length === 0 && <div className="text-xs text-muted-foreground">None yet</div>}
-              {favorites.map(fav => (
-                <button
-                  key={fav}
-                  type="button"
-                  className="block w-full truncate rounded px-2 py-1 text-left text-xs hover:bg-muted"
-                  onClick={() => updateTab(activeTabId, { rootPath: fav })}
-                >
-                  {fav}
-                </button>
-              ))}
-            </div>
-          </ScrollArea>
-          <Button
-            size="sm"
-            variant="secondary"
-            disabled={!rootPath}
-            onClick={() => toggleFavorite(rootPath)}
-          >
-            {favorites.includes(rootPath) ? 'Remove favorite' : 'Favorite current folder'}
-          </Button>
+          <Separator className="shrink-0" />
+          <div className="shrink-0 space-y-2">
+            <div className="text-xs font-medium text-muted-foreground">Favorites</div>
+            <ScrollArea className="h-40 rounded-md border border-border">
+              <div className="space-y-1 p-2">
+                {favorites.length === 0 && <div className="text-xs text-muted-foreground">None yet</div>}
+                {favorites.map(fav => (
+                  <button
+                    key={fav}
+                    type="button"
+                    className="block w-full truncate rounded px-2 py-1 text-left text-xs hover:bg-muted"
+                    onClick={() => updateTab(activeTabId, { rootPath: fav })}
+                  >
+                    {fav}
+                  </button>
+                ))}
+              </div>
+            </ScrollArea>
+            <Button
+              size="sm"
+              variant="secondary"
+              disabled={!rootPath}
+              onClick={() => toggleFavorite(rootPath)}
+            >
+              {favorites.includes(rootPath) ? 'Remove favorite' : 'Favorite current folder'}
+            </Button>
+          </div>
         </aside>
 
         <div className="flex min-h-0 min-w-0 flex-1 flex-col lg:flex-row lg:overflow-hidden">
@@ -758,11 +820,11 @@ export default function ExplorerApp() {
         <Button size="sm" variant="secondary" onClick={cutSelection} disabled={!selectedKeys.length}>
           Cut
         </Button>
-        <Button size="sm" variant="default" onClick={runPaste} disabled={!clipboard?.items?.length || !rootPath}>
+        <Button size="sm" variant="secondary" onClick={runPaste} disabled={!clipboard?.items?.length || !rootPath}>
           Paste here
         </Button>
-        <Button size="sm" variant="destructive" onClick={() => setDelOpen(true)} disabled={!selectedKeys.length}>
-          Delete…
+        <Button size="sm" variant="secondary" onClick={() => setDelOpen(true)} disabled={!selectedKeys.length}>
+          Delete
         </Button>
         <Button
           size="sm"

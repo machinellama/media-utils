@@ -426,10 +426,7 @@ module.exports = () => {
   router.post('/pick-folder', async (req, res) => {
     const chosen = pickNativeFolder();
     if (!chosen) {
-      return res.status(501).json({
-        error:
-          'Folder dialog unavailable or canceled. On Linux install zenity (or kdialog); you can still type a path.'
-      });
+      return res.json({ path: null });
     }
     const resolved = path.resolve(chosen.trim());
     try {

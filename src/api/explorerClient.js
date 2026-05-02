@@ -31,10 +31,10 @@ export async function listSubfolders(folder) {
 }
 
 /** Opens native folder picker via local server (zenity / macOS / Windows). */
+/** @returns {Promise<{ path: string | null }>} `path` is null when the dialog was canceled or nothing was chosen */
 export async function pickFolderNative() {
   const r = await apiFetch('/explorer/pick-folder', { method: 'POST' });
   const j = await r.json().catch(() => ({}));
-  if (r.status === 501) throw new Error(j.error || 'Folder picker not available');
   if (!r.ok) throw new Error(j.error || 'pick folder failed');
   return j;
 }
