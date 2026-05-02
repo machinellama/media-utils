@@ -127,27 +127,28 @@ export default function PreviewPane({
     let intervalId = 0;
     let raf = 0;
     let didResume = false;
+    /** This effect's `<video>` node — never use `videoRef` for progress; after a file switch the ref already points at the next video. */
+    let boundEl = null;
 
     function cleanupListeners(el) {
+      if (!el) return;
       el.removeEventListener('loadedmetadata', onLoadedMeta);
       el.removeEventListener('pause', onPause);
       el.removeEventListener('ended', onEnded);
     }
 
     function onPause() {
-      const el = videoRef.current;
-      if (!el || cleaned) return;
-      recordWatchProgress(watchKey, el.currentTime, el.duration, true);
+      if (!boundEl || cleaned) return;
+      recordWatchProgress(watchKey, boundEl.currentTime, boundEl.duration, true);
     }
 
     function onEnded() {
-      const el = videoRef.current;
-      if (!el || cleaned) return;
-      recordWatchProgress(watchKey, el.duration, el.duration, true);
+      if (!boundEl || cleaned) return;
+      recordWatchProgress(watchKey, boundEl.duration, boundEl.duration, true);
     }
 
     function onLoadedMeta() {
-      const el = videoRef.current;
+      const el = boundEl;
       if (!el || cleaned || didResume) return;
       const dur = el.duration;
       if (!Number.isFinite(dur) || dur <= 0) return;
@@ -166,14 +167,14 @@ export default function PreviewPane({
     function arm(el) {
       if (!el || cleaned) return;
       cleanupListeners(el);
+      boundEl = el;
       didResume = false;
       el.addEventListener('loadedmetadata', onLoadedMeta);
       el.addEventListener('pause', onPause);
       el.addEventListener('ended', onEnded);
       intervalId = window.setInterval(() => {
-        const v = videoRef.current;
-        if (!v || cleaned || v.paused || v.ended) return;
-        recordWatchProgress(watchKey, v.currentTime, v.duration, false);
+        if (!boundEl || cleaned || boundEl.paused || boundEl.ended) return;
+        recordWatchProgress(watchKey, boundEl.currentTime, boundEl.duration, false);
       }, 15000);
       if (el.readyState >= 1 && Number.isFinite(el.duration) && el.duration > 0) {
         onLoadedMeta();
@@ -196,10 +197,10 @@ export default function PreviewPane({
       cleaned = true;
       cancelAnimationFrame(raf);
       clearInterval(intervalId);
-      const el = videoRef.current;
-      if (el) {
-        recordWatchProgress(watchKey, el.currentTime, el.duration, true);
-        cleanupListeners(el);
+      if (boundEl) {
+        recordWatchProgress(watchKey, boundEl.currentTime, boundEl.duration, true);
+        cleanupListeners(boundEl);
+        boundEl = null;
       }
     };
   }, [folder, rel, previewKind, src]);
