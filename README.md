@@ -5,8 +5,6 @@ React/Node app for viewing videos and images on your local filesystem, with some
 
 ## Setup
 - Prereq: nodejs, npm, ffmpeg/ffprobe (video/audio thumbnails, transcoding to MP4/MP3), Linux trash CLI (`gio trash`, `trash-put`, or `gvfs-trash`) for deletes
-- If the server logs `spawn ffmpeg ENOENT`, ffmpeg is not on the PATH your Node process inherits (common when starting from an IDE). Install ffmpeg, or set `FFMPEG_PATH` / `FFPROBE_PATH` in `.env` to absolute binaries (see `.env.example`).
-- HEIC/HEIF images need libvips built with HEIF support (sharp uses system libvips); without it, those thumbnails or PNG conversions may fail
 - `npm install`
 - **Terminal 1:** `npm run start` — API on port **3001** (`PORT` overrides)
 - **Terminal 2:** `npm run dev` — Vite proxies `/explorer`, `/watch`, `/view`, etc. to the API
@@ -14,15 +12,42 @@ React/Node app for viewing videos and images on your local filesystem, with some
 
 ## Features
 
-### Media explorer (main UI)
+### Media explorer
 
-- Multi-tab explorers: folder path, favorites, sort (name / modified / created), recursive search (glob or substring)
-- Thumbnail grid with disk cache under `~/.cache/media-utils/thumbnails` (opaque hashed `.jpg` names); detail preview for video, image, audio, PDF, text; fullscreen. **Dark red grid tiles** mean thumbnail generation failed once and was cached — use **Refresh thumbnails** in the toolbar or delete files under that cache folder; check the API terminal for `[thumbnail] generation failed` or ffmpeg / `FFMPEG_PATH`.
-- Selection (click, Ctrl+click, Shift+range, Ctrl+A); copy / cut / paste across tabs; trash delete; rename
-- Batch convert videos (libx264+aac MP4), images to PNG or WebP, audio to MP3 (libmp3lame); each conversion offers **only files not already in the target format** or **re-encode all selected**; combine videos (modal + background job); remux to MP4 from preview
-- Embedded splice panel, image crop (`*_cropped`) and screenshot-region saves
+<img src="images/example.png" width="900" alt="example view">
 
-Older standalone pages (`WatchPage`, `CombinePage`, `ViewPage`) remain in the repo but are not wired into the main shell.
+- File explorer:
+  - Enter folder path to see files
+  - Folder favorites
+  - Sort files (name / modified / created)
+  - Recursive search (glob or substring)
+  - Multi-tab each to organize views
+- Thumbnail grid
+  - Detail preview for video, image, audio, PDF, text
+  - Fullscreen file
+- Select files for advanced actions
+  - To select: Click, Ctrl+click, Shift+range, Ctrl+A
+  - Copy / Cut / Paste files across tabs
+  - Delete files
+  - Rename files
+  - Splice videos to defined segments
+  - Combine videos into new file
+- Convert files
+  - Videos (libx264+aac MP4)
+  - Images to PNG or WebP
+  - Audio to MP3 (libmp3lame)
+  - note: each conversion offers **only files not already in the target format** or **re-encode all selected**;
+  - Remux to MP4 from preview
+- Preview panel
+  - Screenshot video frame
+  - Screenshot specific region of video frame 
+  - Crop image file
+
+## Troubleshooting
+
+- If the server logs `spawn ffmpeg ENOENT`, ffmpeg is not on the PATH your Node process inherits (common when starting from an IDE). Install ffmpeg, or set `FFMPEG_PATH` / `FFPROBE_PATH` in `.env` to absolute binaries (see `.env.example`).
+- HEIC/HEIF images need libvips built with HEIF support (sharp uses system libvips); without it, those thumbnails or PNG conversions may fail
+- **Dark red grid tiles** mean thumbnail generation failed once and was cached — use **Refresh thumbnails** in the toolbar or delete files under that cache folder; check the API terminal for `[thumbnail] generation failed` or ffmpeg / `FFMPEG_PATH`.
 
 ## License
 
@@ -36,7 +61,6 @@ How to contribute
 1. Check the Issues tab for ideas or just scan the repo and find something to update/fix.
 2. Fork the repo and create a branch named: `ai/<agent>-short-desc` or `feature/short-desc`.
 3. Make a focused change (one logical concern per PR).
-4. Run linters/tests (if present) and include updates in the same PR.
 5. Open a Pull Request with:
    - Short summary of the change
    - Files modified
