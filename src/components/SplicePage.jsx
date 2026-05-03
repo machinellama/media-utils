@@ -39,33 +39,6 @@ export default function SplicePage(props) {
     return videoRef.current;
   }
 
-  async function deleteFile() {
-    setDeleting(true);
-    setStatus('Deleting...');
-    try {
-      const resp = await apiFetch('/watch/delete', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ folder: props.selectedRootPath, path: props.selectedVideoName })
-      });
-      const j = await resp.json().catch(() => ({}));
-      if (!resp.ok || j.error) {
-        setStatus(j.error || 'Delete failed');
-        setDeleting(false);
-        return;
-      }
-      setFileBlob(null);
-      setSourceUrl(null);
-      setOutputFilename('');
-      resetStateOnNewFile();
-      setStatus('Deleted');
-      setDeleting(false);
-    } catch (err) {
-      setStatus('Delete failed');
-      setDeleting(false);
-    }
-  }
-
   async function processFileURL(url, f) {
     try {
       setSourceUrl(url);
@@ -405,9 +378,6 @@ export default function SplicePage(props) {
         </Button>
         <Button type="button" size="sm" variant="secondary" onClick={setEnd} disabled={!getVideoEl()}>
           Set End
-        </Button>
-        <Button type="button" size="sm" variant="destructive" onClick={deleteFile} disabled={!fileBlob || deleting || !props.selectedRootPath}>
-          {deleting ? 'Deleting…' : 'Delete'}
         </Button>
       </div>
       <div className="flex flex-wrap gap-2">

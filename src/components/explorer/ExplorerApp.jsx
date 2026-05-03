@@ -737,8 +737,8 @@ export default function ExplorerApp() {
           </div>
         </aside>
 
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col lg:flex-row lg:overflow-hidden">
-          <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-md border border-border bg-muted/20">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col lg:flex-row overflow-hidden overflow-y-auto">
+          <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden overflow-y-auto rounded-md border border-border bg-muted/20">
             {filesQuery.isFetching && <div className="px-2 py-1 text-xs text-muted-foreground">Loading…</div>}
             {searchTruncated && (
               <div className="px-2 py-1 text-xs text-amber-300">Results truncated (max 5000)</div>

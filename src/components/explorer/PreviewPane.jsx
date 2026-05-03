@@ -556,7 +556,7 @@ export default function PreviewPane({
             className={
               fullscreen && !videoSnapUrl
                 ? 'absolute inset-0 box-border h-full w-full max-h-none max-w-none object-contain'
-                : `max-h-80 w-full rounded-md bg-black ${videoSnapUrl ? 'hidden' : ''}`
+                : `max-h-[60rem] w-full rounded-md bg-black ${videoSnapUrl ? 'hidden' : ''}`
             }
             preload="metadata"
           />

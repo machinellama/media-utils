@@ -7,7 +7,7 @@ import { cn } from '@/lib/utils';
 import { getWatchProgress, subscribeWatchProgress } from '@/lib/videoWatchProgress';
 
 const COLS = 4;
-const ROW_H = 148;
+const ROW_H = 265;
 
 export default function FileGrid({
   rootPath,
@@ -56,8 +56,8 @@ export default function FileGrid({
   }
 
   return (
-    <div ref={parentRef} className="h-full min-h-[200px] overflow-auto p-2">
-      <div className="relative" style={{ height: `${virtualizer.getTotalSize()}px` }}>
+    <div ref={parentRef} className="h-full min-h-[200px] overflow-auto px-2 pt-2 pb-8">
+      <div className="relative" style={{ height: `${virtualizer.getTotalSize() + 100}px` }}>
         {virtualizer.getVirtualItems().map(vRow => {
           const rowIndex = vRow.index;
           const start = rowIndex * COLS;
@@ -68,7 +68,7 @@ export default function FileGrid({
               className="absolute left-0 top-0 grid w-full grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4"
               style={{
                 transform: `translateY(${vRow.start}px)`,
-                height: ROW_H
+                height: 'fit-content'
               }}
             >
               {rowFiles.map(f => renderTile(f))}
