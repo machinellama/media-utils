@@ -25,6 +25,7 @@ React/Node app for viewing videos and images on your local filesystem, with some
 - Thumbnail grid
   - Detail preview for video, image, audio, PDF, text
   - Fullscreen file
+  - Progress indicator for videos
 - Select files for advanced actions
   - To select: Click, Ctrl+click, Shift+range, Ctrl+A
   - Copy / Cut / Paste files across tabs
