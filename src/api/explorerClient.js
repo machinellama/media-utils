@@ -122,11 +122,11 @@ export async function pasteItems(destRoot, mode, items) {
   return r.json();
 }
 
-export async function combineVideos(folder, paths, outputName) {
+export async function combineVideos(folder, paths, outputName, destFolder = null) {
   const r = await apiFetch('/explorer/combine', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ folder, paths, outputName })
+    body: JSON.stringify({ folder, paths, outputName, destFolder })
   });
   if (r.status !== 202) throw new Error('combine failed');
   return r.json();
@@ -206,4 +206,25 @@ export async function fetchTextPreview(folder, rel) {
   const r = await apiFetch(`/explorer/text-preview?${q.toString()}`);
   if (!r.ok) throw new Error('text');
   return r.json();
+}
+
+/** Build a URL to fetch a sibling subtitle file (.srt or .vtt). */
+export function subtitleUrl(folder, rel) {
+  const q = new URLSearchParams({ folder, rel });
+  return `/explorer/subtitle?${q.toString()}`;
+}
+
+export async function moveItemsToAbsoluteFolder(srcRoot, destFolder, rels) {
+  const r = await apiFetch('/explorer/move-to-folder', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      root: srcRoot,
+      destFolder,
+      items: rels.map(rel => ({ rel }))
+    })
+  });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.error || 'Move failed');
+  return j;
 }

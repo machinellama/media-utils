@@ -33,6 +33,9 @@ export default function SplicePage(props) {
 
   const hidePicker = !!props.hideFilePicker;
   const drivesFromPreview = props.variant === 'panel' && props.previewVideoRef;
+  const hasPanelVideoSource = drivesFromPreview && !!props.selectedVideoURL;
+  /** Prefetch may fail or lag; export can load the file on demand from the same URL as the preview. */
+  const canUseFileForExport = !!fileBlob || hasPanelVideoSource;
 
   function getVideoEl() {
     if (drivesFromPreview && props.previewVideoRef?.current) return props.previewVideoRef.current;
@@ -260,13 +263,39 @@ export default function SplicePage(props) {
     setRanges(prev => prev.filter((_, idx) => idx !== i));
   }
 
-  async function exportRanges() {
-    if (!fileBlob || ranges.length === 0) return;
+  async function exportRanges(opts = {}) {
+    if (ranges.length === 0) return;
+    let uploadFile = fileBlob;
+    if (!uploadFile && hasPanelVideoSource) {
+      setProgress(0.02);
+      setStatus('Preparing file for export…');
+      try {
+        const resp = await fetch(props.selectedVideoURL);
+        if (!resp.ok) {
+          const err = await resp.json().catch(() => ({}));
+          setStatus('Failed to read video: ' + (err.error || resp.statusText));
+          setProgress(0);
+          return;
+        }
+        const blob = await resp.blob();
+        uploadFile = new File(
+          [blob],
+          props.selectedVideoName || 'video.mp4',
+          { type: blob.type || 'video/mp4' }
+        );
+        setFileBlob(uploadFile);
+      } catch {
+        setStatus('Failed to read video for export');
+        setProgress(0);
+        return;
+      }
+    }
+    if (!uploadFile) return;
     setProgress(0.02);
     setStatus('Uploading file...');
     try {
       const form = new FormData();
-      form.append('file', fileBlob, fileBlob.name);
+      form.append('file', uploadFile, uploadFile.name);
       form.append('ranges', JSON.stringify(ranges));
       const rot = Number(rotateDeg) || 0;
       form.append('rotate', String(rot));
@@ -274,6 +303,9 @@ export default function SplicePage(props) {
         let name = outputFilename.trim();
         if (!/\.[^/.]+$/.test(name)) name = `${name}.mp4`;
         form.append('outputFilename', name);
+      }
+      if (opts.saveFolder && typeof opts.saveFolder === 'string') {
+        form.append('saveFolder', opts.saveFolder);
       }
       const resp = await apiFetch('/splice', {
         method: 'POST',
@@ -298,7 +330,7 @@ export default function SplicePage(props) {
         if (contentLength) setProgress(0.1 + 0.8 * (received / Number(contentLength)));
       }
       const out = new Blob(chunks, { type: 'video/mp4' });
-      const defaultName = (fileBlob.name || 'video').replace(/\.[^/.]+$/, '') + '_spliced.mp4';
+      const defaultName = (uploadFile.name || 'video').replace(/\.[^/.]+$/, '') + '_spliced.mp4';
       const downloadName =
         outputFilename && outputFilename.trim() !== ''
           ? /\.[^/.]+$/.test(outputFilename.trim())
@@ -307,12 +339,37 @@ export default function SplicePage(props) {
           : defaultName;
       downloadBlob(out, downloadName);
       setProgress(1);
-      setStatus('Done');
+      setStatus(opts.saveFolder ? `Saved to ${opts.saveFolder}` : 'Done');
       setTimeout(() => setProgress(0), 600);
+      if (opts.resetAfter) {
+        resetSpliceStateOnly();
+      }
     } catch (err) {
       setStatus('Upload or processing failed');
       setProgress(0);
     }
+  }
+
+  function resetSpliceStateOnly() {
+    setRanges([]);
+    setCurrentStart(null);
+    setCurrentEnd(null);
+    setRotateDeg(0);
+    setOutputFilename('');
+  }
+
+  async function handleExport(reset = false) {
+    if (!canUseFileForExport || ranges.length === 0) return;
+    let saveFolder = null;
+    if (typeof props.requestSaveFolder === 'function') {
+      try {
+        saveFolder = await props.requestSaveFolder();
+        if (saveFolder === false) return; // user cancelled
+      } catch {
+        return;
+      }
+    }
+    await exportRanges({ saveFolder, resetAfter: reset });
   }
 
   function downloadBlob(blob, name) {
@@ -353,11 +410,6 @@ export default function SplicePage(props) {
           />
         </div>
       )}
-      {drivesFromPreview && (
-        <p className="text-xs leading-snug text-muted-foreground">
-          Use the preview player to scrub; Start / End use its timeline position.
-        </p>
-      )}
       <div className="grid grid-cols-3 gap-2 text-xs">
         <div>
           <Label>Current</Label>
@@ -379,8 +431,6 @@ export default function SplicePage(props) {
         <Button type="button" size="sm" variant="secondary" onClick={setEnd} disabled={!getVideoEl()}>
           Set End
         </Button>
-      </div>
-      <div className="flex flex-wrap gap-2">
         <Button
           type="button"
           size="sm"
@@ -389,9 +439,6 @@ export default function SplicePage(props) {
           disabled={currentStart == null || currentEnd == null}
         >
           Add Range
-        </Button>
-        <Button type="button" size="sm" variant="outline" onClick={() => setRanges([])}>
-          Clear ranges
         </Button>
       </div>
       <div className="flex flex-wrap items-end gap-3">
@@ -403,7 +450,7 @@ export default function SplicePage(props) {
             max={360}
             className="h-8 w-20"
             value={rotateDeg}
-            disabled={!fileBlob}
+            disabled={!canUseFileForExport}
             onChange={e => {
               let v = Number(e.target.value);
               if (!isFinite(v)) v = 0;
@@ -417,15 +464,29 @@ export default function SplicePage(props) {
           <Input
             placeholder="output name"
             value={outputFilename}
-            disabled={!fileBlob}
+            disabled={!canUseFileForExport}
             onChange={e => setOutputFilename(e.target.value)}
             className="h-8 max-w-xs"
           />
         </div>
       </div>
-      <Button type="button" onClick={exportRanges} disabled={!fileBlob || ranges.length === 0 || remuxing}>
-        Export selected (server)
-      </Button>
+      <div className="flex flex-wrap gap-2">
+        <Button
+          type="button"
+          onClick={() => handleExport(false)}
+          disabled={!canUseFileForExport || ranges.length === 0 || remuxing}
+        >
+          Export
+        </Button>
+        <Button
+          type="button"
+          variant="secondary"
+          onClick={() => handleExport(true)}
+          disabled={!canUseFileForExport || ranges.length === 0 || remuxing}
+        >
+          Export &amp; reset
+        </Button>
+      </div>
       <div className="rounded-md border border-border p-2">
         <div className="mb-1 text-xs font-medium">Ranges</div>
         <ul className={cn('space-y-1 overflow-auto text-xs', panel ? 'max-h-56' : 'max-h-32')}>
@@ -457,6 +518,21 @@ export default function SplicePage(props) {
             </li>
           ))}
         </ul>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        <Button type="button" size="sm" variant="outline" onClick={() => setRanges([])} disabled={ranges.length === 0}>
+          Clear ranges
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          onClick={resetSpliceStateOnly}
+          disabled={!canUseFileForExport}
+          title="Reset ranges, rotation and filename"
+        >
+          Reset
+        </Button>
       </div>
       <div className="space-y-1">
         <Label className="text-xs">{status || 'Progress'}</Label>

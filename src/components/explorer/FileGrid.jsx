@@ -7,7 +7,13 @@ import { cn } from '@/lib/utils';
 import { getWatchProgress, subscribeWatchProgress } from '@/lib/videoWatchProgress';
 
 const COLS = 4;
-const ROW_H = 265;
+const ROW_H = 320;
+
+function formatSize(size) {
+  if (typeof size !== 'number' || !Number.isFinite(size) || size < 0) return '';
+  if (size >= 1024 ** 3) return `${(size / 1024 ** 3).toFixed(2)} GB`;
+  return `${(size / 1024 ** 2).toFixed(2)} MB`;
+}
 
 export default function FileGrid({
   rootPath,
@@ -17,9 +23,12 @@ export default function FileGrid({
   onPickFile,
   searchMode,
   makeExplorerDragData,
-  thumbBust
+  thumbBust,
+  scrollToRel,
+  onScrolledToRel
 }) {
   const parentRef = useRef(null);
+  const tilesContainerRef = useRef(null);
   const rowCount = Math.ceil(files.length / COLS) || 0;
 
   const virtualizer = useVirtualizer({
@@ -28,6 +37,34 @@ export default function FileGrid({
     estimateSize: () => ROW_H,
     overscan: 6
   });
+
+  useEffect(() => {
+    if (!scrollToRel) return;
+    const idx = files.findIndex(f => f.rel === scrollToRel);
+    if (idx < 0) {
+      onScrolledToRel?.();
+      return;
+    }
+    const tryScroll = (attempt = 0) => {
+      const rowIndex = Math.floor(idx / COLS);
+      if (parentRef.current && files.length >= 120) {
+        virtualizer.scrollToIndex(rowIndex, { align: 'center' });
+      }
+      requestAnimationFrame(() => {
+        const root = tilesContainerRef.current || parentRef.current;
+        const el = root?.querySelector(`[data-rel="${CSS.escape(scrollToRel)}"]`);
+        if (el) {
+          el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+          onScrolledToRel?.();
+        } else if (attempt < 6) {
+          setTimeout(() => tryScroll(attempt + 1), 60);
+        } else {
+          onScrolledToRel?.();
+        }
+      });
+    };
+    tryScroll();
+  }, [scrollToRel, files, virtualizer, onScrolledToRel]);
 
   if (files.length === 0) {
     return (
@@ -52,12 +89,16 @@ export default function FileGrid({
   );
 
   if (files.length < 120) {
-    return <div className="grid grid-cols-2 gap-2 p-2 sm:grid-cols-3 lg:grid-cols-4">{files.map(f => renderTile(f))}</div>;
+    return (
+      <div ref={tilesContainerRef} className="grid grid-cols-2 gap-2 p-2 sm:grid-cols-3 lg:grid-cols-4">
+        {files.map(f => renderTile(f))}
+      </div>
+    );
   }
 
   return (
     <div ref={parentRef} className="h-full min-h-[200px] overflow-auto px-2 pt-2 pb-8">
-      <div className="relative" style={{ height: `${virtualizer.getTotalSize() + 100}px` }}>
+      <div ref={tilesContainerRef} className="relative" style={{ height: `${virtualizer.getTotalSize() + 100}px` }}>
         {virtualizer.getVirtualItems().map(vRow => {
           const rowIndex = vRow.index;
           const start = rowIndex * COLS;
@@ -103,10 +144,13 @@ function FileTile({ file, rootPath, selected, previewActive, searchMode, onPick,
       </div>
     ) : null;
 
+  const sizeText = formatSize(file.size);
+
   const canDrag = Boolean(makeExplorerDragData && rootPath);
 
   return (
     <div
+      data-rel={file.rel}
       className={cn(
         'overflow-hidden rounded-md border border-border bg-card text-left text-xs transition-colors hover:bg-accent/40',
         selected && 'ring-2 ring-primary',
@@ -134,9 +178,12 @@ function FileTile({ file, rootPath, selected, previewActive, searchMode, onPick,
             </div>
           )}
         </div>
-        <div className="truncate px-1 py-0.5 font-medium" title={file.name}>
+        <div className="break-words px-1 py-0.5 text-xs font-medium leading-tight" title={file.name}>
           {file.name}
         </div>
+        {sizeText && (
+          <div className="px-1 pb-0.5 text-[10px] text-muted-foreground">{sizeText}</div>
+        )}
         {sub}
       </button>
     </div>

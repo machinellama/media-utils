@@ -11,7 +11,8 @@ import {
   remuxVideo,
   getJob,
   savePngToDownloads,
-  renameItem
+  renameItem,
+  subtitleUrl
 } from '@/api/explorerClient';
 import { fileKind } from '@/constants/fileTypes';
 import { splitStemExt, buildRenamedFilename } from '@/lib/renameParts';
@@ -20,6 +21,35 @@ import {
   getWatchProgress,
   recordWatchProgress
 } from '@/lib/videoWatchProgress';
+import SubtitleModal from '@/components/SubtitleModal';
+
+const VOLUME_LS = 'media_utils_video_volume';
+
+function readSavedVolume() {
+  try {
+    const v = Number(localStorage.getItem(VOLUME_LS));
+    if (!Number.isFinite(v)) return 1;
+    return Math.min(1, Math.max(0, v));
+  } catch {
+    return 1;
+  }
+}
+
+let volumeWriteTimer = null;
+function saveVolume(v) {
+  if (volumeWriteTimer) window.clearTimeout(volumeWriteTimer);
+  volumeWriteTimer = window.setTimeout(() => {
+    try {
+      localStorage.setItem(VOLUME_LS, String(v));
+    } catch {
+      /* ignore */
+    }
+  }, 300);
+}
+
+function srtToVtt(srt) {
+  return 'WEBVTT\n\n' + srt.replace(/(\d{2}:\d{2}:\d{2}),(\d{3})/g, '$1.$2');
+}
 async function pollJob(jobId) {
   for (;;) {
     const j = await getJob(jobId);
@@ -37,6 +67,7 @@ function stemForDownloads(name) {
 export default function PreviewPane({
   folder,
   rel,
+  randomPlayNonce,
   previewVideoRef,
   onInvalidate,
   onRenamed,
@@ -68,6 +99,7 @@ export default function PreviewPane({
   const [titleEditing, setTitleEditing] = useState(false);
   const [titleStem, setTitleStem] = useState('');
   const titleInputRef = useRef(null);
+  const [subModalOpen, setSubModalOpen] = useState(false);
 
   const closeVideoRegion = useCallback(() => {
     setVideoSnapUrl(prev => {
@@ -153,6 +185,13 @@ export default function PreviewPane({
       const dur = el.duration;
       if (!Number.isFinite(dur) || dur <= 0) return;
       didResume = true;
+      const fromRandom =
+        randomPlayNonce != null && Number.isFinite(Number(randomPlayNonce));
+      if (fromRandom) {
+        el.currentTime = 0;
+        el.play().catch(() => {});
+        return;
+      }
       const saved = getWatchProgress(watchKey);
       if (!saved || saved.t < 0.25) return;
       const ratio = saved.t / dur;
@@ -202,6 +241,114 @@ export default function PreviewPane({
         cleanupListeners(boundEl);
         boundEl = null;
       }
+    };
+  }, [folder, rel, previewKind, src, randomPlayNonce]);
+
+  // Persist + restore video volume
+  useEffect(() => {
+    if (!folder || !rel || previewKind !== 'video') return;
+    let cancelled = false;
+    let raf = 0;
+    let boundEl = null;
+    const onVolume = () => {
+      if (!boundEl) return;
+      saveVolume(boundEl.volume);
+    };
+    function tryAttach(attempt) {
+      if (cancelled) return;
+      const el = videoRef.current;
+      if (!el) {
+        if (attempt < 30) raf = requestAnimationFrame(() => tryAttach(attempt + 1));
+        return;
+      }
+      boundEl = el;
+      el.volume = readSavedVolume();
+      el.addEventListener('volumechange', onVolume);
+    }
+    tryAttach(0);
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(raf);
+      if (boundEl) boundEl.removeEventListener('volumechange', onVolume);
+    };
+  }, [folder, rel, previewKind, src]);
+
+  // Auto-attach sibling subtitle (.srt or .vtt) as a track on the video
+  useEffect(() => {
+    if (!folder || !rel || previewKind !== 'video') return;
+    let cancelled = false;
+    let blobUrl = null;
+    let raf = 0;
+    let boundEl = null;
+    let injectedTrack = null;
+
+    async function attempt() {
+      try {
+        const r = await fetch(subtitleUrl(folder, rel));
+        if (!r.ok || cancelled) return;
+        const fmt = (r.headers.get('X-Subtitle-Format') || '').toLowerCase();
+        const text = await r.text();
+        if (cancelled) return;
+        let vtt;
+        if (fmt === 'vtt' || /^WEBVTT/.test(text.trim())) {
+          vtt = text;
+        } else {
+          vtt = srtToVtt(text);
+        }
+        const blob = new Blob([vtt], { type: 'text/vtt;charset=utf-8' });
+        blobUrl = URL.createObjectURL(blob);
+
+        function arm(el, inner = 0) {
+          if (cancelled) return;
+          if (!el) {
+            if (inner < 30) raf = requestAnimationFrame(() => arm(videoRef.current, inner + 1));
+            return;
+          }
+          boundEl = el;
+          // remove any earlier injected track
+          el.querySelectorAll('track[data-injected="true"]').forEach(t => {
+            try {
+              URL.revokeObjectURL(t.src);
+            } catch {
+              /* ignore */
+            }
+            t.remove();
+          });
+          const track = document.createElement('track');
+          track.kind = 'subtitles';
+          track.label = 'English';
+          track.srclang = 'en';
+          track.src = blobUrl;
+          track.default = true;
+          track.setAttribute('data-injected', 'true');
+          el.appendChild(track);
+          injectedTrack = track;
+          window.setTimeout(() => {
+            const tt = el.textTracks;
+            for (let i = 0; i < tt.length; i++) {
+              tt[i].mode = i === tt.length - 1 ? 'showing' : 'hidden';
+            }
+          }, 200);
+        }
+        arm(videoRef.current);
+      } catch {
+        /* ignore */
+      }
+    }
+
+    attempt();
+
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(raf);
+      if (injectedTrack) {
+        try {
+          injectedTrack.remove();
+        } catch {
+          /* ignore */
+        }
+      }
+      if (blobUrl) URL.revokeObjectURL(blobUrl);
     };
   }, [folder, rel, previewKind, src]);
 
@@ -441,6 +588,9 @@ export default function PreviewPane({
               <Button type="button" size="sm" variant="outline" onClick={() => onShowSpliceChange(!showSplice)}>
                 {showSplice ? 'Hide splice' : 'Splice'}
               </Button>
+              <Button type="button" size="sm" variant="outline" onClick={() => setSubModalOpen(true)}>
+                Subs
+              </Button>
               <Button type="button" size="sm" variant="outline" onClick={onRemux}>
                 Remux to MP4
               </Button>
@@ -612,6 +762,11 @@ export default function PreviewPane({
       >
         {inner}
       </div>
+      <SubtitleModal
+        isOpen={subModalOpen}
+        onClose={() => setSubModalOpen(false)}
+        filePath={folder && rel ? `${folder.replace(/\/$/, '')}/${rel}` : ''}
+      />
     </div>
   );
 }

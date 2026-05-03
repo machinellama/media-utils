@@ -1,9 +1,8 @@
 import React, { useState } from 'react';
+import { apiFetch } from '@/lib/api';
 import './subtitle.css';
 
 export default function SubtitleModal({ isOpen, onClose, filePath }) {
-  console.log({ isOpen, onClose, filePath });
-
   const [pathInput, setPathInput] = useState(filePath || '');
   const [language, setLanguage] = useState('en');
   const [searchName, setSearchName] = useState('');
@@ -40,7 +39,7 @@ export default function SubtitleModal({ isOpen, onClose, filePath }) {
     }
     setLoading(true);
     try {
-      const res = await fetch('http://localhost:3001/subtitles/search', {
+      const res = await apiFetch('/subtitles/search', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -71,7 +70,7 @@ export default function SubtitleModal({ isOpen, onClose, filePath }) {
     }
     setDownloading(true);
     try {
-      const res = await fetch('http://localhost:3001/subtitles/download', {
+      const res = await apiFetch('/subtitles/download', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

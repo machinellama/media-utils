@@ -44,6 +44,7 @@ import {
   refreshThumbnails,
   createFolder,
   moveToSubfolder,
+  moveItemsToAbsoluteFolder,
   deleteItems,
   renameItem,
   pasteItems,
@@ -54,7 +55,16 @@ import {
   getJob,
   fileUrl
 } from '@/api/explorerClient';
-import { ChevronUp, Folder, FolderOpen, FolderPlus } from 'lucide-react';
+import {
+  ChevronUp,
+  Folder,
+  FolderOpen,
+  FolderPlus,
+  Trash2,
+  X,
+  Shuffle,
+  FileText
+} from 'lucide-react';
 import { joinFsPath, parentFsPath, canGoUpDirectory } from '@/lib/fsPath';
 import { cn } from '@/lib/utils';
 import { fileKind } from '@/constants/fileTypes';
@@ -62,6 +72,8 @@ import { splitStemExt, buildRenamedFilename } from '@/lib/renameParts';
 import SplicePage from '@/components/SplicePage';
 import FileGrid from './FileGrid';
 import PreviewPane from './PreviewPane';
+import RandomPanel from './RandomPanel';
+import SaveLocationDialog from './SaveLocationDialog';
 
 async function pollJobUntilDone(jobId) {
   for (;;) {
@@ -106,6 +118,7 @@ export default function ExplorerApp() {
   const [previewWidthPx, setPreviewWidthPx] = useState(readPreviewWidth);
   const [fullscreenPreview, setFullscreenPreview] = useState(false);
   const [showSplice, setShowSplice] = useState(false);
+  const [showRandom, setShowRandom] = useState(false);
 
   const [delOpen, setDelOpen] = useState(false);
   const [renameOpen, setRenameOpen] = useState(false);
@@ -121,8 +134,25 @@ export default function ExplorerApp() {
   const [mkdirOpen, setMkdirOpen] = useState(false);
   const [mkdirName, setMkdirName] = useState('');
   const [dropOverFolder, setDropOverFolder] = useState(null);
+  const [dropOverFavorite, setDropOverFavorite] = useState(null);
   const [thumbBust, setThumbBust] = useState(() => Date.now());
-  const [sidebarFolderFilter, setSidebarFolderFilter] = useState('');
+  const [sidebarFilter, setSidebarFilter] = useState('');
+  const [scrollToRel, setScrollToRel] = useState(null);
+  const [saveDialogOpen, setSaveDialogOpen] = useState(false);
+  const saveResolverRef = useRef(null);
+
+  function requestSaveFolder() {
+    return new Promise(resolve => {
+      saveResolverRef.current = resolve;
+      setSaveDialogOpen(true);
+    });
+  }
+  function handleSaveDialogResolve(result) {
+    setSaveDialogOpen(false);
+    const fn = saveResolverRef.current;
+    saveResolverRef.current = null;
+    if (fn) fn(result);
+  }
 
   const searchDebounced = useDebouncedValue(activeTab?.searchQuery ?? '', 280);
   const rootPath = activeTab?.rootPath?.trim() || '';
@@ -132,7 +162,7 @@ export default function ExplorerApp() {
   }, [rootPath]);
 
   useEffect(() => {
-    setSidebarFolderFilter('');
+    setSidebarFilter('');
   }, [rootPath]);
 
   useEffect(() => {
@@ -184,7 +214,24 @@ export default function ExplorerApp() {
     return fileKind(base) === 'video';
   }, [preview?.rel]);
 
-  const showSplicePanel = showSplice && previewIsVideo && !fullscreenPreview;
+  const showSplicePanel = showSplice && previewIsVideo;
+  const showRandomPanel = showRandom && !!rootPath && !showSplicePanel;
+
+  function toggleSplice() {
+    setShowSplice(v => {
+      const next = !v;
+      if (next) setShowRandom(false);
+      return next;
+    });
+  }
+
+  function toggleRandom() {
+    setShowRandom(v => {
+      const next = !v;
+      if (next) setShowSplice(false);
+      return next;
+    });
+  }
 
   const invalidateRoots = useCallback(
     roots => {
@@ -253,6 +300,7 @@ export default function ExplorerApp() {
   useEffect(() => {
     function endDrag() {
       setDropOverFolder(null);
+      setDropOverFavorite(null);
     }
     window.addEventListener('dragend', endDrag);
     return () => window.removeEventListener('dragend', endDrag);
@@ -314,7 +362,25 @@ export default function ExplorerApp() {
     if (clipboard.mode === 'cut') clearClipboard();
   }
 
-  async function runCombine() {
+  function summarizeJob(label, j) {
+    if (j?.status === 'error') {
+      return `${label} failed: ${j.error || 'unknown error'}`;
+    }
+    const r = j?.result || {};
+    if (typeof r.converted === 'number') {
+      const errCount = r.errors?.length || 0;
+      const errMsg = errCount
+        ? `; ${errCount} error(s): ${r.errors
+            .slice(0, 3)
+            .map(e => `${e.rel} – ${e.error}`)
+            .join('; ')}${errCount > 3 ? ' …' : ''}`
+        : '';
+      return `${label}: ${r.converted} done${errMsg}`;
+    }
+    return `${label} complete`;
+  }
+
+  async function runCombine(destFolder) {
     const vids = selectedKeys
       .map(parseKey)
       .filter(Boolean)
@@ -322,30 +388,43 @@ export default function ExplorerApp() {
     if (vids.length < 2) return;
     const folder = rootPath;
     const paths = vids.map(v => v.rel);
-    const { jobId } = await combineVideos(folder, paths, combineName.trim() || 'combined.mp4');
-    await pollJobUntilDone(jobId);
+    setFolderActionMsg('Combining…');
+    const { jobId } = await combineVideos(
+      folder,
+      paths,
+      combineName.trim() || 'combined.mp4',
+      destFolder || null
+    );
+    const j = await pollJobUntilDone(jobId);
     setCombineOpen(false);
-    invalidateRoots([folder]);
+    setFolderActionMsg(summarizeJob('Combine', j));
+    invalidateRoots([folder, ...(destFolder ? [destFolder] : [])]);
   }
 
   async function runConvertVideos(mode) {
     const items = selectedKeys.map(parseKey).filter(Boolean);
+    setFolderActionMsg('Converting videos…');
     const { jobId } = await convertVideos(items, mode);
-    await pollJobUntilDone(jobId);
+    const j = await pollJobUntilDone(jobId);
+    setFolderActionMsg(summarizeJob('Convert videos', j));
     invalidateRoots([...new Set(items.map(i => i.root))]);
   }
 
   async function runConvertImages(fmt, mode) {
     const items = selectedKeys.map(parseKey).filter(Boolean);
+    setFolderActionMsg(`Converting images → ${fmt}…`);
     const { jobId } = await convertImages(items, fmt, mode);
-    await pollJobUntilDone(jobId);
+    const j = await pollJobUntilDone(jobId);
+    setFolderActionMsg(summarizeJob(`Convert images → ${fmt}`, j));
     invalidateRoots([...new Set(items.map(i => i.root))]);
   }
 
   async function runConvertAudio(mode) {
     const items = selectedKeys.map(parseKey).filter(Boolean);
+    setFolderActionMsg('Converting audio → mp3…');
     const { jobId } = await convertAudio(items, mode);
-    await pollJobUntilDone(jobId);
+    const j = await pollJobUntilDone(jobId);
+    setFolderActionMsg(summarizeJob('Convert audio → mp3', j));
     invalidateRoots([...new Set(items.map(i => i.root))]);
   }
 
@@ -356,11 +435,28 @@ export default function ExplorerApp() {
 
   const subfolders = subfoldersQuery.data?.dirs ?? [];
   const filteredSubfolders = useMemo(() => {
-    const q = sidebarFolderFilter.trim().toLowerCase();
+    const q = sidebarFilter.trim().toLowerCase();
     if (!q) return subfolders;
     return subfolders.filter(d => d.toLowerCase().includes(q));
-  }, [subfolders, sidebarFolderFilter]);
+  }, [subfolders, sidebarFilter]);
+
+  const sidebarFiles = useMemo(() => {
+    if (searchDebounced.trim()) return [];
+    return files.filter(f => !f.rel.includes('/'));
+  }, [files, searchDebounced]);
+  const filteredSidebarFiles = useMemo(() => {
+    const q = sidebarFilter.trim().toLowerCase();
+    if (!q) return sidebarFiles;
+    return sidebarFiles.filter(f => f.name.toLowerCase().includes(q));
+  }, [sidebarFiles, sidebarFilter]);
+
   const canGoUp = canGoUpDirectory(rootPath);
+
+  function handleSidebarFileClick(file) {
+    selectOnly(rootPath, file.rel);
+    setPreview({ root: rootPath, rel: file.rel });
+    setScrollToRel(file.rel);
+  }
 
   const makeExplorerDragData = useCallback(
     file => {
@@ -412,6 +508,54 @@ export default function ExplorerApp() {
     },
     [rootPath, clearSelection, invalidateRoots]
   );
+
+  const handleDropOnFavorite = useCallback(
+    async (destAbs, e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      setDropOverFavorite(null);
+      let data;
+      try {
+        data = JSON.parse(e.dataTransfer.getData('application/json'));
+      } catch {
+        return;
+      }
+      if (!data?.root || !Array.isArray(data.rels) || !data.rels.length) return;
+      setFolderActionMsg('Moving to favorite…');
+      try {
+        const out = await moveItemsToAbsoluteFolder(data.root, destAbs, data.rels);
+        if (out.errors?.length) {
+          const msg = out.errors.map(err => `${err.rel}: ${err.error}`).join('; ');
+          setFolderActionMsg(out.ok?.length ? `Some failed: ${msg}` : msg);
+        } else {
+          setFolderActionMsg(`Moved ${out.ok?.length || 0} file(s) to ${destAbs}`);
+        }
+        clearSelection();
+        invalidateRoots([data.root, destAbs]);
+      } catch (err) {
+        setFolderActionMsg(err.message || 'Move failed');
+      }
+    },
+    [clearSelection, invalidateRoots]
+  );
+
+  function openCombineDialog() {
+    const vids = selectedKeys
+      .map(parseKey)
+      .filter(Boolean)
+      .filter(it => fileKind(it.rel.split('/').pop() || '') === 'video');
+    if (vids.length < 2) return;
+    const firstName = vids[0].rel.split('/').pop() || 'combined';
+    const { stem } = splitStemExt(firstName);
+    setCombineName(`${stem || 'combined'}.mp4`);
+    setCombineOpen(true);
+  }
+
+  async function startCombine() {
+    const dest = await requestSaveFolder();
+    if (dest === false) return;
+    runCombine(dest || null);
+  }
 
   async function runMkdir() {
     const n = mkdirName.trim();
@@ -589,6 +733,17 @@ export default function ExplorerApp() {
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
+        <Button
+          size="sm"
+          variant={showRandom ? 'default' : 'outline'}
+          className="h-9 shrink-0 gap-1 text-xs"
+          disabled={!rootPath}
+          onClick={toggleRandom}
+          title="Random video playback"
+        >
+          <Shuffle className="h-3.5 w-3.5" />
+          Random
+        </Button>
         </div>
         {folderPickHint && <p className="text-xs text-amber-600 dark:text-amber-400">{folderPickHint}</p>}
       </div>
@@ -597,12 +752,12 @@ export default function ExplorerApp() {
         <aside className="flex w-full min-h-[14rem] flex-1 flex-col gap-2 border-border min-h-0 lg:h-full lg:min-h-0 lg:w-[260px] lg:flex-none lg:border-r lg:pr-2">
           <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-hidden">
             <div className="flex shrink-0 flex-wrap items-center gap-1.5">
-              <div className="text-xs font-medium text-muted-foreground">Folders</div>
+              <div className="text-xs font-medium text-muted-foreground">Browse</div>
               <Input
-                aria-label="Filter subfolders"
+                aria-label="Filter folders and files"
                 className="h-8 min-w-[80px] flex-1 font-mono text-xs"
-                value={sidebarFolderFilter}
-                onChange={e => setSidebarFolderFilter(e.target.value)}
+                value={sidebarFilter}
+                onChange={e => setSidebarFilter(e.target.value)}
                 placeholder="Filter…"
                 disabled={!rootPath}
               />
@@ -643,6 +798,12 @@ export default function ExplorerApp() {
                 {rootPath || 'Set a folder path'}
               </div>
             </div>
+            {rootPath && (
+              <div className="shrink-0 px-1 text-[10px] text-muted-foreground">
+                {subfolders.length} folder{subfolders.length === 1 ? '' : 's'}, {sidebarFiles.length} file
+                {sidebarFiles.length === 1 ? '' : 's'}
+              </div>
+            )}
             <ScrollArea className="min-h-0 flex-1 rounded-md border border-border">
               <div
                 className="space-y-0.5 p-2"
@@ -651,7 +812,7 @@ export default function ExplorerApp() {
                 }}
               >
                 {!rootPath && (
-                  <div className="text-xs text-muted-foreground">Enter or pick a folder to browse subfolders.</div>
+                  <div className="text-xs text-muted-foreground">Enter or pick a folder to browse.</div>
                 )}
                 {rootPath && subfoldersQuery.isFetching && (
                   <div className="text-xs text-muted-foreground">Loading…</div>
@@ -661,20 +822,16 @@ export default function ExplorerApp() {
                 )}
                 {rootPath &&
                   !subfoldersQuery.isFetching &&
-                  subfolders.length === 0 &&
-                  !subfoldersQuery.isError && (
-                    <div className="text-xs text-muted-foreground">No subfolders</div>
-                  )}
-                {rootPath &&
-                  !subfoldersQuery.isFetching &&
-                  subfolders.length > 0 &&
                   filteredSubfolders.length === 0 &&
+                  filteredSidebarFiles.length === 0 &&
                   !subfoldersQuery.isError && (
-                    <div className="text-xs text-muted-foreground">No folders match filter</div>
+                    <div className="text-xs text-muted-foreground">
+                      {sidebarFilter.trim() ? 'Nothing matches filter' : 'Empty folder'}
+                    </div>
                   )}
                 {filteredSubfolders.map(d => (
                   <div
-                    key={d}
+                    key={`d:${d}`}
                     className={cn(
                       'rounded-md transition-colors',
                       dropOverFolder === d && 'bg-primary/15 ring-1 ring-primary'
@@ -702,6 +859,25 @@ export default function ExplorerApp() {
                     </button>
                   </div>
                 ))}
+                {filteredSidebarFiles.map(f => {
+                  const isPreview =
+                    preview && preview.root === rootPath && preview.rel === f.rel;
+                  return (
+                    <button
+                      key={`f:${f.rel}`}
+                      type="button"
+                      className={cn(
+                        'flex w-full items-center gap-1.5 truncate rounded px-1.5 py-1 text-left text-xs hover:bg-muted',
+                        isPreview && 'bg-muted ring-1 ring-primary'
+                      )}
+                      onClick={() => handleSidebarFileClick(f)}
+                      title={f.name}
+                    >
+                      <FileText className="h-3.5 w-3.5 shrink-0 opacity-70" />
+                      <span className="truncate">{f.name}</span>
+                    </button>
+                  );
+                })}
               </div>
             </ScrollArea>
             {folderActionMsg && (
@@ -715,14 +891,46 @@ export default function ExplorerApp() {
               <div className="space-y-1 p-2">
                 {favorites.length === 0 && <div className="text-xs text-muted-foreground">None yet</div>}
                 {favorites.map(fav => (
-                  <button
+                  <div
                     key={fav}
-                    type="button"
-                    className="block w-full truncate rounded px-2 py-1 text-left text-xs hover:bg-muted"
-                    onClick={() => updateTab(activeTabId, { rootPath: fav })}
+                    className={cn(
+                      'group flex items-center gap-1 rounded transition-colors hover:bg-muted',
+                      dropOverFavorite === fav && 'bg-primary/15 ring-1 ring-primary'
+                    )}
+                    onDragOver={e => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      e.dataTransfer.dropEffect = 'move';
+                      setDropOverFavorite(fav);
+                    }}
+                    onDragLeave={e => {
+                      if (!e.currentTarget.contains(e.relatedTarget)) setDropOverFavorite(null);
+                    }}
+                    onDrop={e => handleDropOnFavorite(fav, e)}
                   >
-                    {fav}
-                  </button>
+                    <button
+                      type="button"
+                      className="block min-w-0 flex-1 truncate rounded px-2 py-1 text-left text-xs"
+                      title={`Open ${fav} — or drop files to move there`}
+                      onClick={() => updateTab(activeTabId, { rootPath: fav })}
+                    >
+                      {fav}
+                    </button>
+                    <Button
+                      type="button"
+                      size="icon"
+                      variant="ghost"
+                      className="h-6 w-6 shrink-0 opacity-0 transition-opacity group-hover:opacity-100"
+                      title="Remove favorite"
+                      aria-label={`Remove favorite ${fav}`}
+                      onClick={e => {
+                        e.stopPropagation();
+                        toggleFavorite(fav);
+                      }}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
                 ))}
               </div>
             </ScrollArea>
@@ -752,6 +960,8 @@ export default function ExplorerApp() {
               searchMode={!!searchDebounced.trim()}
               makeExplorerDragData={makeExplorerDragData}
               thumbBust={thumbBust}
+              scrollToRel={scrollToRel}
+              onScrolledToRel={() => setScrollToRel(null)}
             />
           </main>
 
@@ -770,6 +980,7 @@ export default function ExplorerApp() {
             <PreviewPane
               folder={preview?.root}
               rel={preview?.rel}
+              randomPlayNonce={preview?.randomPlayNonce}
               previewVideoRef={previewVideoRef}
               onInvalidate={() => invalidateRoots([rootPath])}
               onRenamed={onPreviewRenamed}
@@ -780,7 +991,7 @@ export default function ExplorerApp() {
             />
           </div>
 
-          {showSplicePanel && preview && (
+          {showSplicePanel && preview && !fullscreenPreview && (
             <>
               <div
                 role="separator"
@@ -789,8 +1000,19 @@ export default function ExplorerApp() {
                 className="mx-0 hidden w-1.5 shrink-0 rounded-full bg-border lg:block"
               />
               <aside className="flex min-h-[260px] w-full min-w-0 flex-col border-t border-border lg:min-h-0 lg:w-[420px] lg:min-w-[300px] lg:shrink-0 lg:border-l lg:border-t-0">
-                <div className="shrink-0 border-b border-border px-2 py-1.5 text-xs font-medium text-muted-foreground">
-                  Splice
+                <div className="flex shrink-0 items-center justify-between border-b border-border px-2 py-1.5">
+                  <span className="text-xs font-medium text-muted-foreground">Splice</span>
+                  <Button
+                    type="button"
+                    size="icon"
+                    variant="ghost"
+                    className="h-6 w-6"
+                    onClick={() => setShowSplice(false)}
+                    aria-label="Close splice panel"
+                    title="Close"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </Button>
                 </div>
                 <div className="min-h-0 flex-1 overflow-auto p-2">
                   <SplicePage
@@ -800,13 +1022,70 @@ export default function ExplorerApp() {
                     selectedVideoURL={fileUrl(preview.root, preview.rel)}
                     selectedVideoName={preview.rel}
                     selectedRootPath={preview.root}
+                    requestSaveFolder={requestSaveFolder}
                   />
                 </div>
               </aside>
             </>
           )}
+
+          {showRandomPanel && rootPath && (
+            <>
+              <div
+                role="separator"
+                aria-orientation="vertical"
+                aria-label="Between preview and random"
+                className={cn(
+                  'mx-0 hidden w-1.5 shrink-0 rounded-full bg-border lg:block',
+                  fullscreenPreview && 'lg:hidden'
+                )}
+              />
+              <aside
+                className={cn(
+                  'flex min-h-[260px] w-full min-w-0 flex-col border-t border-border lg:min-h-0 lg:w-[360px] lg:min-w-[280px] lg:shrink-0 lg:border-l lg:border-t-0',
+                  fullscreenPreview && 'hidden'
+                )}
+              >
+                <RandomPanel
+                  rootPath={rootPath}
+                  previewVideoRef={previewVideoRef}
+                  onClose={() => setShowRandom(false)}
+                />
+              </aside>
+            </>
+          )}
         </div>
       </div>
+
+      {showSplicePanel && preview && fullscreenPreview && (
+        <aside className="fixed right-0 top-0 z-[60] flex h-full w-[420px] min-w-[300px] flex-col border-l border-border bg-background shadow-xl">
+          <div className="flex shrink-0 items-center justify-between border-b border-border px-2 py-1.5">
+            <span className="text-xs font-medium text-muted-foreground">Splice</span>
+            <Button
+              type="button"
+              size="icon"
+              variant="ghost"
+              className="h-6 w-6"
+              onClick={() => setShowSplice(false)}
+              aria-label="Close splice panel"
+              title="Close"
+            >
+              <X className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+          <div className="min-h-0 flex-1 overflow-auto p-2">
+            <SplicePage
+              variant="panel"
+              hideFilePicker
+              previewVideoRef={previewVideoRef}
+              selectedVideoURL={fileUrl(preview.root, preview.rel)}
+              selectedVideoName={preview.rel}
+              selectedRootPath={preview.root}
+              requestSaveFolder={requestSaveFolder}
+            />
+          </div>
+        </aside>
+      )}
 
       <footer className="flex flex-wrap items-center gap-2 border-t border-border pt-2">
         <div className="text-xs text-muted-foreground">{selectedKeys.length} selected</div>
@@ -845,7 +1124,7 @@ export default function ExplorerApp() {
         >
           Rename…
         </Button>
-        <Button size="sm" variant="outline" onClick={() => setCombineOpen(true)} disabled={videosSel.length < 2}>
+        <Button size="sm" variant="outline" onClick={openCombineDialog} disabled={videosSel.length < 2}>
           Combine videos…
         </Button>
         <DropdownMenu>
@@ -1006,18 +1285,40 @@ export default function ExplorerApp() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Combine {videosSel.length} videos</DialogTitle>
-            <DialogDescription>Output file will be created in the current folder tab.</DialogDescription>
+            <DialogDescription>
+              Choose the destination folder when you click Start. Files will be concatenated in selection order.
+            </DialogDescription>
           </DialogHeader>
-          <Label>Output filename</Label>
-          <Input value={combineName} onChange={e => setCombineName(e.target.value)} className="font-mono text-sm" />
+          <div className="space-y-3">
+            <div>
+              <Label className="text-xs text-muted-foreground">Files (in order)</Label>
+              <ol className="mt-1 max-h-48 list-decimal space-y-0.5 overflow-auto rounded-md border border-border bg-muted/30 px-5 py-1.5 font-mono text-xs">
+                {videosSel.map(v => (
+                  <li key={v.rel} className="break-all">
+                    {v.rel.split('/').pop()}
+                  </li>
+                ))}
+              </ol>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">Output filename</Label>
+              <Input value={combineName} onChange={e => setCombineName(e.target.value)} className="font-mono text-sm" />
+            </div>
+          </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setCombineOpen(false)}>
               Cancel
             </Button>
-            <Button onClick={runCombine}>Start</Button>
+            <Button onClick={startCombine}>Start</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <SaveLocationDialog
+        open={saveDialogOpen}
+        onResolve={handleSaveDialogResolve}
+        defaultLabel="Default (current folder)"
+      />
     </div>
   );
 }

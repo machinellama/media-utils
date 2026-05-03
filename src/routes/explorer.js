@@ -16,6 +16,7 @@ const extensions = require('../constants/extensions.json');
 const { trashPaths } = require('../lib/server/trash');
 const { pickNativeFolder } = require('../lib/server/nativeFolderDialog');
 const { createSemaphore } = require('../lib/server/thumbnailQueue');
+const { safeRename } = require('../lib/server/safeRename');
 const { runFFmpeg } = require('./util');
 const { getFfmpegPath, getFfprobePath } = require('../lib/server/ffmpegPath');
 
@@ -669,6 +670,89 @@ module.exports = () => {
     return res.sendFile(absPath, SEND_DOTFILES_ALLOW);
   });
 
+  router.get('/subtitle', async (req, res) => {
+    const folder = req.query.folder;
+    const rel = req.query.rel;
+    if (!folder || !rel) return res.status(400).json({ error: 'missing' });
+    const absVideo = resolveUnderRoot(folder, rel);
+    if (!absVideo) return res.status(403).json({ error: 'forbidden' });
+    const dir = path.dirname(absVideo);
+    const stem = path.basename(absVideo, path.extname(absVideo));
+    const candidates = [
+      path.join(dir, `${stem}.vtt`),
+      path.join(dir, `${stem}.srt`),
+      path.join(dir, `${stem}.en.vtt`),
+      path.join(dir, `${stem}.en.srt`)
+    ];
+    const found = candidates.find(p => fs.existsSync(p));
+    if (!found) return res.status(404).json({ error: 'no subtitle' });
+    const ext = path.extname(found).toLowerCase();
+    res.setHeader(
+      'Content-Type',
+      ext === '.vtt' ? 'text/vtt; charset=utf-8' : 'text/plain; charset=utf-8'
+    );
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('X-Subtitle-Format', ext.replace('.', ''));
+    return res.sendFile(found, SEND_DOTFILES_ALLOW);
+  });
+
+  const moveToFolderSchema = z.object({
+    root: z.string(),
+    destFolder: z.string(),
+    items: z.array(z.object({ rel: z.string() })).min(1)
+  });
+
+  router.post('/move-to-folder', express.json(), async (req, res) => {
+    const parsed = moveToFolderSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: 'invalid' });
+    const { root, destFolder, items } = parsed.data;
+    const absRoot = path.resolve(root);
+    const absDest = path.resolve(destFolder);
+    try {
+      const st = await fsp.stat(absDest);
+      if (!st.isDirectory()) return res.status(400).json({ error: 'not a directory' });
+    } catch {
+      return res.status(400).json({ error: 'destination missing' });
+    }
+
+    const results = [];
+    const errors = [];
+    for (const it of items) {
+      const absFrom = resolveUnderRoot(root, it.rel);
+      if (!absFrom || !fs.existsSync(absFrom)) {
+        errors.push({ rel: it.rel, error: 'missing' });
+        continue;
+      }
+      let srcStat;
+      try {
+        srcStat = await fsp.stat(absFrom);
+      } catch (e) {
+        errors.push({ rel: it.rel, error: e.message || 'stat' });
+        continue;
+      }
+      if (!srcStat.isFile()) {
+        errors.push({ rel: it.rel, error: 'not a file' });
+        continue;
+      }
+      if (path.resolve(path.dirname(absFrom)) === absDest) {
+        errors.push({ rel: it.rel, error: 'already there' });
+        continue;
+      }
+      const base = path.basename(absFrom);
+      const absTo = uniqueDest(absDest, base);
+      try {
+        await safeRename(absFrom, absTo);
+        results.push({
+          rel: it.rel,
+          to: absTo
+        });
+      } catch (e) {
+        errors.push({ rel: it.rel, error: e.message || String(e) });
+      }
+    }
+    res.json({ ok: results, errors });
+  });
+
   router.get('/text-preview', async (req, res) => {
     const folder = req.query.folder;
     const rel = req.query.rel;
@@ -836,7 +920,7 @@ module.exports = () => {
       const base = path.basename(absFrom);
       const absTo = uniqueDest(absDestDir, base);
       try {
-        await fsp.rename(absFrom, absTo);
+        await safeRename(absFrom, absTo);
         results.push({
           rel: it.rel,
           toRel: path.relative(absRoot, absTo).split(path.sep).join('/')
@@ -867,7 +951,7 @@ module.exports = () => {
         if (mode === 'copy') {
           await fsp.copyFile(absSrc, destPath);
         } else {
-          await fsp.rename(absSrc, destPath);
+          await safeRename(absSrc, destPath);
         }
         results.push({
           from: it,
@@ -964,14 +1048,16 @@ module.exports = () => {
   const combineSchema = z.object({
     folder: z.string(),
     paths: z.array(z.string()),
-    outputName: z.string()
+    outputName: z.string(),
+    destFolder: z.string().nullable().optional()
   });
 
   router.post('/combine', express.json(), async (req, res) => {
     const parsed = combineSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: 'invalid' });
-    const { folder, paths, outputName } = parsed.data;
+    const { folder, paths, outputName, destFolder } = parsed.data;
     const absRoot = path.resolve(folder);
+    const absDest = destFolder ? path.resolve(destFolder) : absRoot;
     const jobId = jobCreate();
     res.status(202).json({ jobId });
 
@@ -979,6 +1065,13 @@ module.exports = () => {
       jobUpdate(jobId, { status: 'running', message: 'ffmpeg' });
       const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'expl-combine-'));
       try {
+        try {
+          await fsp.mkdir(absDest, { recursive: true });
+          const st = await fsp.stat(absDest);
+          if (!st.isDirectory()) throw new Error('destination not a directory');
+        } catch (e) {
+          throw new Error('destination not accessible: ' + (e.message || e));
+        }
         const partPaths = [];
         for (let i = 0; i < paths.length; i++) {
           const rel = paths[i];
@@ -994,12 +1087,15 @@ module.exports = () => {
         const outTmp = path.join(tmpDir, 'out.mp4');
         await runFFmpeg(['-y', '-f', 'concat', '-safe', '0', '-i', listPath, '-c', 'copy', outTmp]);
         const safeOut = path.basename(outputName) || 'combined.mp4';
-        const finalPath = uniqueDest(absRoot, safeOut.endsWith('.mp4') ? safeOut : `${safeOut}.mp4`);
+        const finalPath = uniqueDest(absDest, safeOut.endsWith('.mp4') ? safeOut : `${safeOut}.mp4`);
         await fsp.copyFile(outTmp, finalPath);
         jobUpdate(jobId, {
           status: 'done',
           progress: 100,
-          result: { path: path.relative(absRoot, finalPath).split(path.sep).join('/') }
+          result: {
+            path: path.relative(absDest, finalPath).split(path.sep).join('/'),
+            destFolder: absDest
+          }
         });
       } catch (e) {
         jobUpdate(jobId, { status: 'error', error: e.message || String(e) });
@@ -1025,7 +1121,7 @@ module.exports = () => {
         await runFFmpeg(['-y', '-i', abs, '-c', 'copy', '-movflags', '+faststart', tmp]);
         const stem = abs.slice(0, -path.extname(abs).length);
         const outAbs = stem + '.mp4';
-        await fsp.rename(tmp, outAbs);
+        await safeRename(tmp, outAbs);
         if (outAbs !== abs) await fsp.unlink(abs).catch(() => {});
         const relOut = path.relative(path.resolve(folder), outAbs).split(path.sep).join('/');
         jobUpdate(jobId, { status: 'done', result: { rel: relOut } });
@@ -1097,7 +1193,7 @@ module.exports = () => {
               await runFFmpeg(['-y', '-i', abs, '-c', 'copy', '-movflags', '+faststart', tmp]);
             }
           }
-          await fsp.rename(tmp, outPath);
+          await safeRename(tmp, outPath);
           done++;
         } catch (e) {
           errors.push({ rel: it.rel, error: e.message || String(e) });
@@ -1145,7 +1241,7 @@ module.exports = () => {
           const img = sharp(abs, { failOn: 'none' }).rotate();
           if (format === 'png') await img.png().toFile(tmp);
           else await img.webp({ quality: 85 }).toFile(tmp);
-          await fsp.rename(tmp, outPath);
+          await safeRename(tmp, outPath);
           done++;
         } catch (e) {
           errors.push({ rel: it.rel, error: e.message || String(e) });
@@ -1190,7 +1286,7 @@ module.exports = () => {
           }
           const tmp = path.join(os.tmpdir(), `ca-${randomUUID()}.mp3`);
           await runFFmpeg(['-y', '-i', abs, '-vn', '-c:a', 'libmp3lame', '-q:a', '2', tmp]);
-          await fsp.rename(tmp, outPath);
+          await safeRename(tmp, outPath);
           done++;
         } catch (e) {
           errors.push({ rel: it.rel, error: e.message || String(e) });
