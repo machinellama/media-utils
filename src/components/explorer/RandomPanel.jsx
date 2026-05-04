@@ -94,9 +94,9 @@ export default function RandomPanel({ rootPath, previewVideoRef, onClose }) {
     bumpRandomPreview(item.rel);
   }
 
-  // Auto-advance: when preview video ends, pick another random.
-  // Re-attach when preview file changes: PreviewPane uses key={src} on <video>, so each new
-  // file is a new DOM node — the old `ended` listener would not run on the new element.
+  // Auto-advance: when preview video ends, pick next from the current randomized list (displayList),
+  // not another fresh random selection. Re-attach when preview file changes: PreviewPane uses key={src}
+  // on <video>, so each new file is a new DOM node — the old `ended` listener would not run on the new element.
   useEffect(() => {
     if (!autoAdvance) return;
     let cancelled = false;
@@ -109,8 +109,13 @@ export default function RandomPanel({ rootPath, previewVideoRef, onClose }) {
         return;
       }
       const onEnded = () => {
-        const item = pickRandom();
-        if (item) bumpRandomPreview(item.rel);
+        if (!displayList.length) return;
+        const currentRel = preview?.root === rootPath ? preview?.rel : null;
+        // Find current index in the display list and advance to the next item.
+        const idx = currentRel ? displayList.findIndex(v => v.rel === currentRel) : -1;
+        const next =
+          idx >= 0 && idx < displayList.length - 1 ? displayList[idx + 1] : displayList[0];
+        if (next) bumpRandomPreview(next.rel);
       };
       detach();
       el.addEventListener('ended', onEnded);
@@ -124,11 +129,12 @@ export default function RandomPanel({ rootPath, previewVideoRef, onClose }) {
   }, [
     autoAdvance,
     previewVideoRef,
-    pickRandom,
     bumpRandomPreview,
     preview?.root,
     preview?.rel,
-    preview?.randomPlayNonce
+    preview?.randomPlayNonce,
+    displayList,
+    rootPath
   ]);
 
   const currentRel = preview?.root === rootPath ? preview?.rel : null;

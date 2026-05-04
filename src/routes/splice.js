@@ -296,20 +296,6 @@ module.exports = (upload) => {
         finalPath = rotatedPath;
       }
 
-      // If saveFolder provided, copy finalPath into that folder (use outputFilename or spliced default)
-      if (saveFolder) {
-        const saveDir = saveFolder;
-        fs.mkdirSync(saveDir, { recursive: true });
-        const filenameForSave = outputFilename || `${path.basename(req.file.originalname || 'video')}_spliced.mp4`;
-        const destination = path.join(saveDir, filenameForSave);
-        fs.copyFileSync(finalPath, destination);
-        console.info('[splice] final output saved to', destination);
-      }
-
-      // Set response headers and filename (use outputFilename if provided)
-      const dispositionName = outputFilename || `${path.basename(req.file.originalname || 'video')}_spliced.mp4`;
-      res.setHeader('Content-Type', 'video/mp4');
-      res.setHeader('Content-Disposition', `attachment; filename="${dispositionName}"`);
       const stream = fs.createReadStream(finalPath);
       stream.pipe(res);
       stream.on('end', async () => {

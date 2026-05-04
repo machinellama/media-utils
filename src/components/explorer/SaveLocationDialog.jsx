@@ -110,7 +110,7 @@ export default function SaveLocationDialog({
             {defaultLabel}
           </Button>
           <Button onClick={useDraft} disabled={!draft.trim()}>
-            Save here
+            Save
           </Button>
         </DialogFooter>
       </DialogContent>
